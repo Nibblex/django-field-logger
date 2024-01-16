@@ -28,7 +28,9 @@ def rsetattr(obj, attr, val, save=False):
 def log_fields(instance, fields):
     logs = {}
 
-    pre_instance = instance.__class__.objects.get(pk=instance.pk)
+    pre_instance = instance.__class__.objects.filter(pk=instance.pk).first()
+    if not pre_instance:
+        return logs
 
     for field in fields:
         try:
