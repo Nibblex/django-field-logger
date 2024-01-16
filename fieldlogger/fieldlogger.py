@@ -41,7 +41,7 @@ def log_fields(instance, fields):
         if new_value == old_value:
             continue
 
-        logs[field] = FieldLog.create(
+        logs[field] = FieldLog.objects.create(
             app_label=instance._meta.app_label,
             model=instance._meta.model_name,
             object_id=instance.pk,
