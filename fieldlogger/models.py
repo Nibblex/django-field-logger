@@ -8,7 +8,7 @@ from .config import ENCODER, DECODER
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
     model = models.CharField(_("model class name"), max_length=100, editable=False)
-    object_id = models.PositiveIntegerField(editable=False)
+    object_id = models.CharField(max_length=255, editable=False)
     field = models.CharField(_("field name"), max_length=100, editable=False)
     old_value = models.JSONField(
         encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
