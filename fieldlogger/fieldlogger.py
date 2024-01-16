@@ -1,5 +1,7 @@
 from django.core.exceptions import FieldDoesNotExist
 
+from .models import FieldLog
+
 # Helpers
 
 
@@ -39,7 +41,7 @@ def log_fields(instance, fields):
         if new_value == old_value:
             continue
 
-        logs[field] = instance.field_logs.create(
+        logs[field] = FieldLog.create(
             app_label=instance._meta.app_label,
             model=instance._meta.model_name,
             object_id=instance.pk,
