@@ -173,3 +173,11 @@ Additionally, ```FieldLog``` model provides the following properties:
 - ```instance```: returns the instance that is being logged.
 - ```previous_log```: returns the previous log of the instance that is being logged.
 - ```created```: returns True if the log is the first one for that field in that instance, False otherwise.
+
+
+### The FieldLoggerMixin
+
+This package provides you a mixin class which is called ```FieldLoggerMixin```.
+This mixin class provides you the following property:
+
+- ```fieldlog_set``` returns the ```FieldLog``` queryset of the instance that is being logged.
