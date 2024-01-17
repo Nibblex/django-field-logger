@@ -163,6 +163,7 @@ follows:
  'old_value': 'John Doe',
  'new_value': 'Jane Doe',
  'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
+ 'created': False, # this is a boolean field, if it is True, it means that instance is a newly created instance
 }
 
 ```
@@ -172,7 +173,6 @@ Additionally, ```FieldLog``` model provides the following properties:
 - ```model_class```: returns the model class of the instance that is being logged.
 - ```instance```: returns the instance that is being logged.
 - ```previous_log```: returns the previous log of the instance that is being logged.
-- ```created```: returns True if the log is the first one for that field in that instance, False otherwise.
 
 
 ### The FieldLoggerMixin
