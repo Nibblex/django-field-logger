@@ -53,6 +53,6 @@ class FieldLog(models.Model):
                 field=self.field,
             )
             .exclude(pk=self.pk)
-            .order_by("-pk")
+            .order_by("pk")
             .last()
         )
