@@ -18,6 +18,7 @@ class FieldLog(models.Model):
         encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
     )
     extra_data = models.JSONField(encoder=ENCODER, decoder=DECODER, default=dict)
+    created = models.BooleanField(default=False, editable=False)
 
     def __str__(self):
         return f"({self.field}) {self.old_value} -> {self.new_value}"
@@ -28,7 +29,9 @@ class FieldLog(models.Model):
         instance = super().from_db(db, field_names, values)
         iid = instance.instance_id
         instance.instance_id = int(iid) if iid.isdigit() else iid
-        instance.old_value = field_class.to_python(instance.old_value)
+        instance.old_value = (
+            field_class.to_python(instance.old_value) if not instance.created else None
+        )
         instance.new_value = field_class.to_python(instance.new_value)
         return instance
 
@@ -53,7 +56,3 @@ class FieldLog(models.Model):
             .order_by("-pk")
             .last()
         )
-
-    @property
-    def created(self):
-        return not self.previous_log

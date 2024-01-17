@@ -4,18 +4,14 @@ from .models import FieldLog
 from .utils import rgetattr, rsetattr
 
 
-def log_fields(instance, fields):
+def log_fields(instance, fields, pre_instance=None):
     logs = {}
-
-    pre_instance = instance.__class__.objects.filter(pk=instance.pk).first()
-    if not pre_instance:
-        return logs
 
     for field in fields:
         try:
             field_model = instance._meta.get_field(field)
             new_value = field_model.to_python(rgetattr(instance, field))
-            old_value = rgetattr(pre_instance, field)
+            old_value = rgetattr(pre_instance, field) if pre_instance else None
         except (FieldDoesNotExist, AttributeError):
             continue
 
@@ -29,6 +25,7 @@ def log_fields(instance, fields):
             field=field,
             old_value=old_value,
             new_value=new_value,
+            created=pre_instance is None,
         )
 
         rsetattr(instance, field, new_value)
