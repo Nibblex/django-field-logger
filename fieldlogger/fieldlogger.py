@@ -1,28 +1,7 @@
 from django.core.exceptions import FieldDoesNotExist
 
 from .models import FieldLog
-
-# Helpers
-
-
-def rgetattr(obj, attr, *args):
-    from functools import reduce
-
-    def _getattr(obj, attr):
-        return getattr(obj, attr, *args)
-
-    return reduce(_getattr, [obj] + attr.split("."))
-
-
-def rsetattr(obj, attr, val, save=False):
-    pre, _, post = attr.rpartition(".")
-    obj_to_save = rgetattr(obj, pre) if pre else obj
-    setattr(obj_to_save, post, val)
-    if save:
-        obj_to_save.save(update_fields=[post])
-
-
-# Main function
+from .utils import rgetattr, rsetattr
 
 
 def log_fields(instance, fields):

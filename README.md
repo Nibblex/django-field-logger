@@ -57,9 +57,9 @@ FIELD_LOGGER_SETTINGS={
                 pass
             ```
 
-            - ```instance``` is the model instance that is being logged.
-            - ```fields``` is the list of fields that are being logged.
-            - ```logs``` is the list of ```FieldLog``` objects that are created for each field.
+            - ```instance``` the model instance that is being logged.
+            - ```fields``` list of fields that are being logged.
+            - ```logs``` dict of logs that are being created. The key is the field name and the value is the ```FieldLog``` instance.
 
 
 ### How it works?
@@ -111,6 +111,39 @@ Supposing you have a model called ```Driver``` and fields called ```latest_speed
 
     log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, table_name=model).last()
     print(log.field, log.old_value, log.new_value)  # prints: driver_name John Doe Jane Doe
+```
+
+### Callback example
+
+Supposing you have this function in yourapp/callbacks.py which sets the ```extra_data``` field of the ```FieldLog``` model:
+
+```python
+def set_extra_data_for_driver_name(instance, fields, logs):
+    log = logs.get('driver_name')
+    if log:
+        log.extra_data = {
+            'name_length': len(log.new_value)
+        }
+        log.save()
+```
+
+You can add this function to your configuration like this:
+
+```python
+FIELD_LOGGER_SETTINGS={
+    'LOGGING_APPS': {
+        'drivers': {
+            'models': {
+                'Driver': {
+                    'fields': ['driver_name'],
+                    'callbacks': [
+                        'yourapp.callbacks.set_extra_data_for_driver_name'
+                    ]
+                },
+            },
+        },
+    },
+}
 ```
 
 ### The model structure
