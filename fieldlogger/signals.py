@@ -14,8 +14,6 @@ def log_dirty_fields(sender, instance, *args, **kwargs):
 
         if using_fields:
             logs = log_fields(instance, using_fields)
-            if logs and "timestamps" not in update_fields:
-                kwargs["update_fields"] = update_fields | frozenset(["timestamps"])
 
             callbacks = LOGGING_CONFIG[sender._meta.label].get("callbacks", [])
             for callback in callbacks:
