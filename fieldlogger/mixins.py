@@ -3,7 +3,7 @@ from .models import FieldLog
 from django.db import models
 
 
-class LoggerMixin(models.Model):
+class FieldLoggerMixin(models.Model):
     @property
     def fieldlog_set(self):
         return FieldLog.objects.filter(
