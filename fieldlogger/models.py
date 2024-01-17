@@ -26,6 +26,8 @@ class FieldLog(models.Model):
     def from_db(cls, db, field_names, values):
         field_class = apps.get_model(values[1], values[2])._meta.get_field(values[4])
         instance = super().from_db(db, field_names, values)
+        iid = instance.instance_id
+        instance.instance_id = int(iid) if iid.isdigit() else iid
         instance.old_value = field_class.to_python(instance.old_value)
         instance.new_value = field_class.to_python(instance.new_value)
         return instance
