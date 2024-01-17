@@ -19,8 +19,8 @@ FIELD_LOGGER_SETTINGS={
             'models': {
                 'YourModel': {
                     'logging_enabled': True, # (default: True)
-                    'fields': ['field1', 'field2'] # (default: [])
-                    'exclude_fields': ['field3', 'field4'] # (default: [])
+                    'fields': ['field1', 'field2'], # (default: [])
+                    'exclude_fields': ['field3', 'field4'], # (default: [])
                     'callbacks': [
                         lambda instance, fields, logs: print(instance, fields, logs),
                         'yourapp.app.callbacks.your_function_name'
