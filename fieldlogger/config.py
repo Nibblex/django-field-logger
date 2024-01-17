@@ -51,11 +51,12 @@ def logging_fields(instance):
     logging_fields = model_config.get("fields", [])
     if not logging_fields:
         exclude_fields = model_config.get("exclude_fields", [])
-        logging_fields = [
-            field.name
-            for field in instance._meta.fields
-            if field.name not in exclude_fields
-        ]
+        if exclude_fields:
+            logging_fields = [
+                field.name
+                for field in instance._meta.fields
+                if field.name not in exclude_fields
+            ]
 
     return frozenset(logging_fields)
 

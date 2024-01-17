@@ -46,7 +46,7 @@ def log_fields(instance, fields):
         logs[field] = FieldLog.objects.create(
             app_label=instance._meta.app_label,
             model=instance._meta.model_name,
-            object_id=instance.pk,
+            instance_id=instance.pk,
             field=field,
             old_value=old_value,
             new_value=new_value,

@@ -8,16 +8,16 @@ from .config import ENCODER, DECODER
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
     model = models.CharField(_("model class name"), max_length=100, editable=False)
-    object_id = models.CharField(max_length=255, editable=False)
+    instance_id = models.CharField(max_length=255, editable=False)
     field = models.CharField(_("field name"), max_length=100, editable=False)
+    timestamp = models.DateTimeField(auto_now=True, editable=False)
     old_value = models.JSONField(
         encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
     )
-    timestamp = models.DateTimeField(auto_now=True, editable=False)
     new_value = models.JSONField(
         encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
     )
-    extra_data = models.JSONField(default=dict)
+    extra_data = models.JSONField(encoder=ENCODER, decoder=DECODER, default=dict)
 
     def __str__(self):
         return f"({self.field}) {self.old_value} -> {self.new_value}"
@@ -36,7 +36,7 @@ class FieldLog(models.Model):
 
     @property
     def instance(self):
-        return self.model_class.objects.get(pk=self.object_id)
+        return self.model_class.objects.get(pk=self.instance_id)
 
     @property
     def previous_log(self):
@@ -44,7 +44,7 @@ class FieldLog(models.Model):
             self.__class__.objects.filter(
                 app_label=self.app_label,
                 model=self.model,
-                object_id=self.object_id,
+                instance_id=self.instance_id,
                 field=self.field,
             )
             .exclude(pk=self.pk)
