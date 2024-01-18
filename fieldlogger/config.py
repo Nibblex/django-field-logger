@@ -19,7 +19,7 @@ class Encoder(JSONEncoder):
             return obj.total_seconds()
 
         if isinstance(obj, Decimal):
-            return str(obj)
+            return float(obj)
 
         if isinstance(obj, (bytes, bytearray)):
             return obj.decode()
