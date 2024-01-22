@@ -66,14 +66,12 @@ def callbacks(*configs):
     for config in configs:
         callbacks += config.get("callbacks", [])
 
-    callbacks = map(
-        lambda callback: import_string(callback)
-        if isinstance(callback, str)
-        else callback,
-        callbacks,
-    )
+    callbacks = [
+        import_string(callback) if isinstance(callback, str) else callback
+        for callback in callbacks
+    ]
 
-    return list(callbacks)
+    return callbacks
 
 
 ENCODER = SETTINGS.get("ENCODER")
