@@ -14,23 +14,27 @@ def pre_save_log_fields(sender, instance, *args, **kwargs):
     instance._fieldlogger_using_fields = using_fields
 
     if instance.pk:
-        instance._fieldlogger_pre_instance = sender.objects.get(pk=instance.pk)
+        instance._fieldlogger_pre_instance = sender.objects.filter(
+            pk=instance.pk
+        ).first()
 
 
 def post_save_log_fields(sender, instance, created, *args, **kwargs):
     using_fields = getattr(instance, "_fieldlogger_using_fields", None)
     pre_instance = getattr(instance, "_fieldlogger_pre_instance", None)
 
-    if using_fields is not None:
+    if using_fields and (pre_instance or created):
+        # Get logs
         logs = log_fields(instance, using_fields, pre_instance)
 
+        # Run callbacks
         callbacks = LOGGING_CONFIG[sender._meta.label].get("callbacks", [])
         for callback in callbacks:
             callback(instance, using_fields, logs)
 
-        del instance._fieldlogger_using_fields
-
-    if pre_instance is not None:
+    # Clean up
+    del instance._fieldlogger_using_fields
+    if hasattr(instance, "_fieldlogger_pre_instance"):
         del instance._fieldlogger_pre_instance
 
 

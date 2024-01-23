@@ -6,7 +6,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setuptools.setup(
     name="django-field-logger",
-    version="0.0.15",
+    version="0.0.16",
     author="Sergio Rodríguez",
     author_email="srodriguez3441@gmail.com",
     description="""A python package which logs each change made to a Django model instance.""",
