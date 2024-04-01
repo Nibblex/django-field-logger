@@ -1,0 +1,5 @@
+django
+pytest
+pytest-django
+pre-commit
+tox

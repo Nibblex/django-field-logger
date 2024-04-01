@@ -1,11 +1,12 @@
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from json import JSONEncoder, JSONDecoder
+from json import JSONDecoder, JSONEncoder
+from uuid import UUID
 
 from django.conf import settings
+from django.core.files import File
 from django.db import models
 from django.utils.module_loading import import_string
-
 
 SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
 
@@ -14,23 +15,21 @@ class Encoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (date, datetime, time)):
             return obj.isoformat()
-
-        if isinstance(obj, timedelta):
-            return obj.total_seconds()
-
-        if isinstance(obj, Decimal):
+        elif isinstance(obj, timedelta):
+            return str(obj.total_seconds())
+        elif isinstance(obj, Decimal):
             return float(obj)
-
-        if isinstance(obj, (bytes, bytearray)):
+        elif isinstance(obj, (bytes, bytearray)):
             return obj.decode()
-
-        if isinstance(obj, memoryview):
+        elif isinstance(obj, memoryview):
             return obj.tobytes().decode()
-
-        if isinstance(obj, models.Model):
+        elif isinstance(obj, File):
+            return obj.name
+        elif isinstance(obj, UUID):
+            return str(obj)
+        elif isinstance(obj, models.Model):
             return obj.pk
-
-        if isinstance(obj, models.QuerySet):
+        elif isinstance(obj, models.QuerySet):
             return list(obj.values_list("pk", flat=True))
 
         return super().default(obj)
@@ -91,8 +90,6 @@ for app, app_config in LOGGING_APPS.items():
         if not model_config or not logging_enabled(SETTINGS, app_config, model_config):
             continue
 
-        model_config.update(
-            {"callbacks": callbacks(SETTINGS, app_config, model_config)}
-        )
+        model_config.update({"callbacks": callbacks(SETTINGS, app_config, model_config)})
 
         LOGGING_CONFIG[f"{app}.{model}"] = model_config

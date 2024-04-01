@@ -2,7 +2,7 @@ from django.apps import apps
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from .config import ENCODER, DECODER
+from .config import DECODER, ENCODER
 
 
 class FieldLog(models.Model):
@@ -23,6 +23,16 @@ class FieldLog(models.Model):
     def __str__(self):
         return f"({self.field}) {self.old_value} -> {self.new_value}"
 
+    @staticmethod
+    def from_db_field(field_class, value):
+        match field_class.__class__:
+            case models.BinaryField:
+                value = bytes(value, "utf-8")
+            case models.DecimalField:
+                value = round(value, field_class.decimal_places)
+
+        return field_class.to_python(value)
+
     @classmethod
     def from_db(cls, db, field_names, values):
         field_class = apps.get_model(values[1], values[2])._meta.get_field(values[4])
@@ -30,9 +40,11 @@ class FieldLog(models.Model):
         iid = instance.instance_id
         instance.instance_id = int(iid) if iid.isdigit() else iid
         instance.old_value = (
-            field_class.to_python(instance.old_value) if not instance.created else None
+            cls.from_db_field(field_class, instance.old_value)
+            if not instance.created
+            else None
         )
-        instance.new_value = field_class.to_python(instance.new_value)
+        instance.new_value = cls.from_db_field(field_class, instance.new_value)
         return instance
 
     @property

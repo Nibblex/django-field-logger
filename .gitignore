@@ -1,17 +1,26 @@
+# tox test environment
+/.tox
+
 # VSCode
-.vscode/
+/.vscode
 
-# Virtual environment.
-/venv/
+# Setuptools distribution folder
+/dist
 
-# Environment variables.
+# Python egg metadata, regenerated from source files by setuptools
+/*.egg-info
+
+# Virtual environment
+/venv
+
+# Environment variables
 .env
 
-# Compiled python modules.
+# Compiled python modules
 *.pyc
 
-# Setuptools distribution folder.
-/dist/
+# logs
+*.log
 
-# Python egg metadata, regenerated from source files by setuptools.
-/*.egg-info
+# media
+media

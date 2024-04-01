@@ -38,7 +38,6 @@ FIELD_LOGGER_SETTINGS={
         'yourapp.app.callbacks.your_function_name'
     ], # (default: [])
 }
-
 ```
 
 - ```ENCODER``` and ```DECODER``` are optional. If you want to encode/decode your model instance fields, you can specify your encoder/decoder
@@ -93,7 +92,7 @@ FIELD_LOGGER_SETTINGS={
 ```
 
 Supposing you have a model called ```Driver``` and fields called ```latest_speed``` and ```driver_name``` and ```driver_id```:
-    
+
 ```python
     driver = Driver.objects.last()
     driver.latest_speed = 5
@@ -148,7 +147,7 @@ FIELD_LOGGER_SETTINGS={
 
 ### The model structure
 
-This package provides you a django model which is called ```FieldLog```; which tracks each change to a model 
+This package provides you a django model which is called ```FieldLog```; which tracks each change to a model
 instance specified in your configuration mapping. An example record is as
 follows:
 
