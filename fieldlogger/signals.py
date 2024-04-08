@@ -1,4 +1,4 @@
-from django.db.models.signals import pre_save, post_save
+from django.db.models.signals import post_save, pre_save
 
 from .config import LOGGING_CONFIG, logging_fields
 from .fieldlogger import log_fields
@@ -14,9 +14,7 @@ def pre_save_log_fields(sender, instance, *args, **kwargs):
     instance._fieldlogger_using_fields = using_fields
 
     if instance.pk:
-        instance._fieldlogger_pre_instance = sender.objects.filter(
-            pk=instance.pk
-        ).first()
+        instance._fieldlogger_pre_instance = sender.objects.filter(pk=instance.pk).first()
 
 
 def post_save_log_fields(sender, instance, created, *args, **kwargs):
@@ -30,7 +28,12 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         # Run callbacks
         callbacks = LOGGING_CONFIG[sender._meta.label].get("callbacks", [])
         for callback in callbacks:
-            callback(instance, using_fields, logs)
+            try:
+                callback(instance, using_fields, logs)
+            except Exception as e:
+                if LOGGING_CONFIG[sender._meta.label]["fail_silently"]:
+                    continue
+                raise e
 
     # Clean up
     del instance._fieldlogger_using_fields

@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from functools import reduce
 from json import JSONDecoder, JSONEncoder
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from django.core.files import File
 from django.db import models
 from django.utils.module_loading import import_string
 
-SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
+SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {}).copy()
 
 
 class Encoder(JSONEncoder):
@@ -39,10 +40,20 @@ class Decoder(JSONDecoder):
     pass
 
 
-def logging_enabled(*configs):
-    return SETTINGS.get("LOGGING_ENABLED", True) and all(
-        config.get("logging_enabled", True) for config in configs
+def _cfg_reduce(op, key, *configs, default=None):
+    return reduce(
+        op,
+        [config.get(key, default) for config in configs],
+        SETTINGS.get(key.upper(), default),
     )
+
+
+def logging_enabled(*configs):
+    return _cfg_reduce(lambda a, b: a and b, "logging_enabled", *configs, default=True)
+
+
+def fail_silently(*configs):
+    return _cfg_reduce(lambda a, b: a and b, "fail_silently", *configs, default=True)
 
 
 def logging_fields(instance):
@@ -61,9 +72,7 @@ def logging_fields(instance):
 
 
 def callbacks(*configs):
-    callbacks = SETTINGS.get("CALLBACKS", [])
-    for config in configs:
-        callbacks += config.get("callbacks", [])
+    callbacks = _cfg_reduce(lambda a, b: a + b, "callbacks", *configs, default=[])
 
     callbacks = [
         import_string(callback) if isinstance(callback, str) else callback
@@ -79,17 +88,16 @@ ENCODER = import_string(ENCODER) if ENCODER else Encoder
 DECODER = SETTINGS.get("DECODER")
 DECODER = import_string(DECODER) if DECODER else Decoder
 
-LOGGING_APPS = SETTINGS.get("LOGGING_APPS", {})
-
 LOGGING_CONFIG = {}
-for app, app_config in LOGGING_APPS.items():
-    if not app_config or not logging_enabled(SETTINGS, app_config):
+for app, app_config in SETTINGS.get("LOGGING_APPS", {}).items():
+    if not app_config or not logging_enabled(app_config):
         continue
 
     for model, model_config in app_config.get("models", {}).items():
-        if not model_config or not logging_enabled(SETTINGS, app_config, model_config):
+        if not model_config or not logging_enabled(app_config, model_config):
             continue
 
-        model_config.update({"callbacks": callbacks(SETTINGS, app_config, model_config)})
+        model_config["callbacks"] = callbacks(app_config, model_config)
+        model_config["fail_silently"] = fail_silently(app_config, model_config)
 
         LOGGING_CONFIG[f"{app}.{model}"] = model_config

@@ -1,7 +1,7 @@
 # Django Field Logger
 
 ### Quick Description
-A python package which logs each change made to a Django model instance.
+A Django app for logging changes in model fields.
 
 ### How to set up?
 1) Add ```fieldlogger``` to your ```INSTALLED_APPS```
@@ -13,12 +13,15 @@ FIELD_LOGGER_SETTINGS={
     'ENCODER': 'path.to.your.json.Encoder', # (default: None)
     'DECODER': 'path.to.your.json.Decoder', # (default: None)
     'LOGGING_ENABLED': True, # (default: True)
+    'FAIL_SILENTLY': True, # (default: True)
     'LOGGING_APPS': {
         'your_app': {
             'logging_enabled': True, # (default: True)
+            'fail_silently': True, # (default: True)
             'models': {
                 'YourModel': {
                     'logging_enabled': True, # (default: True)
+                    'fail_silently': True, # (default: True)
                     'fields': ['field1', 'field2'], # (default: [])
                     'exclude_fields': ['field3', 'field4'], # (default: [])
                     'callbacks': [
@@ -43,6 +46,7 @@ FIELD_LOGGER_SETTINGS={
 - ```ENCODER``` and ```DECODER``` are optional. If you want to encode/decode your model instance fields, you can specify your encoder/decoder
     classes here. Your encoder/decoder classes must be subclasses of ```json.JSONEncoder``` and ```json.JSONDecoder``` respectively.
 - ```LOGGING_ENABLED``` is optional. If you want to disable logging globally, you can set this to ```False```.
+- ```FAIL_SILENTLY``` is optional. If it is set to ```False```, exceptions will be raised if the callback function fails.
 - ```LOGGING_APPS``` apps to be logged.
     - ```models``` models to be logged.
         - ```fields``` is optional. If you want to log only specific fields, you can specify them here.
@@ -143,6 +147,10 @@ FIELD_LOGGER_SETTINGS={
         },
     },
 }
+
+If 'fail_silently' is set to False, exceptions will be raised if the callback function fails.
+
+note: you can also add lambda functions to your callbacks
 ```
 
 ### The model structure

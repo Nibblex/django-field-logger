@@ -8,7 +8,7 @@ MEDIA_URL = "/media/"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": "mem_db",
+        "NAME": "test_db",
     }
 }
 
@@ -29,10 +29,14 @@ LOGGING = {
         "console": {
             "class": "logging.StreamHandler",
         },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": os.path.join(BASE_DIR, "debug.log"),
+        },
     },
     "loggers": {
         "root": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "INFO",
             "propagate": True,
         },
@@ -40,32 +44,27 @@ LOGGING = {
 }
 
 
-def global_callback(instance, using_fields, logs):
-    for log in logs.values():
-        log.extra_data["global"] = True
-        log.save()
+def get_callback(scope):
+    def callback(instance, using_fields, logs):
+        for log in logs.values():
+            log.extra_data[scope] = True
+            log.save(update_fields=["extra_data"])
+
+    return callback
 
 
-def testapp_callback(instance, using_fields, logs):
-    for log in logs.values():
-        log.extra_data["testapp"] = True
-        log.save()
-
-
-def testmodel_callback(instance, using_fields, logs):
-    for log in logs.values():
-        log.extra_data["testmodel"] = True
-        log.save()
+def failing_callback(instance, using_fields, logs):
+    raise Exception("This is a test exception.")
 
 
 FIELD_LOGGER_SETTINGS = {
-    "CALLBACKS": [global_callback],
+    "CALLBACKS": [get_callback("global")],
     "LOGGING_APPS": {
         "testapp": {
-            "callbacks": [testapp_callback],
+            "callbacks": [get_callback("testapp")],
             "models": {
                 "TestModel": {
-                    "callbacks": [testmodel_callback],
+                    "callbacks": [failing_callback],
                     "fields": [
                         "test_big_integer_field",
                         "test_binary_field",
@@ -93,7 +92,6 @@ FIELD_LOGGER_SETTINGS = {
                         "test_url_field",
                         "test_uuid_field",
                     ],
-                    "exclude_fields": [],
                 },
             },
         },
