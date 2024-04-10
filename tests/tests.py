@@ -5,7 +5,7 @@ import pytest
 from django.conf import settings
 
 from fieldlogger import config
-from fieldlogger.tests.testapp.models import TestModel
+from tests.testapp.models import TestModel
 
 from .test_utils import (
     CREATE_FORM,
