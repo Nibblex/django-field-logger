@@ -31,5 +31,6 @@ class TestModel(FieldLoggerMixin, models.Model):
     test_time_field = models.TimeField(null=True)
     test_url_field = models.URLField(null=True)
     test_uuid_field = models.UUIDField(null=True)
+    test_foreign_key = models.ForeignKey("self", on_delete=models.CASCADE, null=True)
 
     __test__ = False

@@ -104,7 +104,7 @@ def check_logs(instance, created=False):
 
     for log in logs:
         prev_log = log.previous_log
-        assert (prev_log is not None) == (not created)
+        assert (prev_log is None) == created
         assert log.app_label == "testapp"
         assert log.model == "testmodel"
         assert log.instance_id == instance.pk

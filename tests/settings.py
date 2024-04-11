@@ -86,9 +86,21 @@ FIELD_LOGGER_SETTINGS = {
                         "test_time_field",
                         "test_url_field",
                         "test_uuid_field",
+                        "test_foreign_key",
                     ],
                 },
             },
         },
     },
 }
+
+# Internationalization
+# https://docs.djangoproject.com/en/4.0/topics/i18n/
+
+LANGUAGE_CODE = "en-us"
+
+TIME_ZONE = "America/Argentina/Cordoba"
+
+USE_I18N = True
+
+USE_TZ = True

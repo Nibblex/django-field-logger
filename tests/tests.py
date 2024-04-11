@@ -20,8 +20,15 @@ ORIGINAL_SETTINGS = settings.FIELD_LOGGER_SETTINGS.copy()
 
 @pytest.fixture
 def test_instance():
+    # Create two instances for the foreign key field
+    test_fk_instance = TestModel.objects.create()
+    CREATE_FORM["test_foreign_key"] = test_fk_instance
+    test_fk_instance2 = TestModel.objects.create()
+    UPDATE_FORM["test_foreign_key"] = test_fk_instance2
+    # Create the main instance
     instance = TestModel.objects.create(**CREATE_FORM)
     yield instance
+    # Reset the settings
     settings.FIELD_LOGGER_SETTINGS.clear()
     settings.FIELD_LOGGER_SETTINGS.update(ORIGINAL_SETTINGS)
     reload(config)

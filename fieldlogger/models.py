@@ -25,11 +25,12 @@ class FieldLog(models.Model):
 
     @staticmethod
     def from_db_field(field_class, value):
-        match field_class.__class__:
-            case models.BinaryField:
-                value = bytes(value, "utf-8")
-            case models.DecimalField:
-                value = round(value, field_class.decimal_places)
+        if field_class.__class__ is models.BinaryField:
+            value = bytes(value, "utf-8")
+        elif field_class.__class__ is models.DecimalField:
+            value = round(value, field_class.decimal_places)
+        elif field_class.__class__ is models.ForeignKey:
+            return field_class.related_model.objects.get(pk=value)
 
         return field_class.to_python(value)
 

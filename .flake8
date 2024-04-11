@@ -4,6 +4,7 @@ ignore =
     W503
 exclude =
     .git
+    .tox
     .vscode
     venv
     migrations
