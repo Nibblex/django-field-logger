@@ -12,7 +12,7 @@ How to set up?
 
 .. code:: python
 
-    FIELD_LOGGER_SETTINGS={
+    FIELD_LOGGER_SETTINGS = {
         'ENCODER': 'path.to.your.json.Encoder', # (default: None)
         'DECODER': 'path.to.your.json.Decoder', # (default: None)
         'LOGGING_ENABLED': True, # (default: True)
@@ -97,7 +97,7 @@ Supposing you have this configuration in your settings.py file:
 
 .. code:: python
 
-    FIELD_LOGGER_SETTINGS={
+    FIELD_LOGGER_SETTINGS = {
         'LOGGING_APPS': {
             'drivers': {
                 'models': {
@@ -151,7 +151,7 @@ Then you can add this callback function to your configuration like this:
 
 .. code:: python
 
-    FIELD_LOGGER_SETTINGS={
+    FIELD_LOGGER_SETTINGS = {
         'LOGGING_APPS': {
             'drivers': {
                 'models': {
