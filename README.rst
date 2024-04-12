@@ -12,38 +12,38 @@ How to set up?
 
 .. code:: python
 
-   FIELD_LOGGER_SETTINGS={
-       'ENCODER': 'path.to.your.json.Encoder', # (default: None)
-       'DECODER': 'path.to.your.json.Decoder', # (default: None)
-       'LOGGING_ENABLED': True, # (default: True)
-       'FAIL_SILENTLY': True, # (default: True)
-       'LOGGING_APPS': {
-           'your_app': {
-               'logging_enabled': True, # (default: True)
-               'fail_silently': True, # (default: True)
-               'models': {
-                   'YourModel': {
-                       'logging_enabled': True, # (default: True)
-                       'fail_silently': True, # (default: True)
-                       'fields': ['field1', 'field2'], # (default: [])
-                       'exclude_fields': ['field3', 'field4'], # (default: [])
-                       'callbacks': [
-                           lambda instance, fields, logs: print(instance, fields, logs),
-                           'yourapp.app.callbacks.your_function_name'
-                       ], # (default: [])
-                   },
-               },
-               'callbacks': [
-                   lambda instances, fields, logs: print(instances, fields, logs),
-                   'yourapp.app.callbacks.your_function_name'
-               ], # (default: [])
-           },
-       },
-       'CALLBACKS': [
-           lambda instance, fields, logs: print(instance, fields, logs),
-           'yourapp.app.callbacks.your_function_name'
-       ], # (default: [])
-   }
+    FIELD_LOGGER_SETTINGS={
+        'ENCODER': 'path.to.your.json.Encoder', # (default: None)
+        'DECODER': 'path.to.your.json.Decoder', # (default: None)
+        'LOGGING_ENABLED': True, # (default: True)
+        'FAIL_SILENTLY': True, # (default: True)
+        'LOGGING_APPS': {
+            'your_app': {
+                'logging_enabled': True, # (default: True)
+                'fail_silently': True, # (default: True)
+                'models': {
+                    'YourModel': {
+                        'logging_enabled': True, # (default: True)
+                        'fail_silently': True, # (default: True)
+                        'fields': ['field1', 'field2'], # (default: [])
+                        'exclude_fields': ['field3', 'field4'], # (default: [])
+                        'callbacks': [
+                            lambda instance, fields, logs: print(instance, fields, logs),
+                            'yourapp.app.callbacks.your_function_name'
+                        ], # (default: [])
+                    },
+                },
+                'callbacks': [
+                    lambda instances, fields, logs: print(instances, fields, logs),
+                    'yourapp.app.callbacks.your_function_name'
+                ], # (default: [])
+            },
+        },
+        'CALLBACKS': [
+            lambda instance, fields, logs: print(instance, fields, logs),
+            'yourapp.app.callbacks.your_function_name'
+        ], # (default: [])
+    }
 
 -  ``ENCODER`` and ``DECODER`` are optional. If you want to
    encode/decode your model instance fields, you can specify your
@@ -97,39 +97,39 @@ Supposing you have this configuration in your settings.py file:
 
 .. code:: python
 
-   FIELD_LOGGER_SETTINGS={
-       'LOGGING_APPS': {
-           'drivers': {
-               'models': {
-                   'Driver': {
-                       'fields': ['driver_name']
-                   },
-               },
-           },
-       },
-   }
+    FIELD_LOGGER_SETTINGS={
+        'LOGGING_APPS': {
+            'drivers': {
+                'models': {
+                    'Driver': {
+                        'fields': ['driver_name']
+                    },
+                },
+            },
+        },
+    }
 
 Supposing you have a model called ``Driver`` with fields called
 ``latest_speed``, ``driver_name``, ``driver_id``:
 
 .. code:: python
 
-       driver = Driver.objects.last()
-       driver.latest_speed = 5
-       driver.save()  # fieldlogger won't create a record since 'latest_speed' was not among the loggable fields
+    driver = Driver.objects.last()
+    driver.latest_speed = 5
+    driver.save()  # fieldlogger won't create a record since 'latest_speed' was not among the loggable fields
 
-       driver.driver_name = 'John Doe'
-       driver.save()  # a record with this driver is created
+    driver.driver_name = 'John Doe'
+    driver.save()  # a record with this driver is created
 
-       driver.driver_name = 'Jane Doe'
-       driver.save()  # a record with this driver is created
+    driver.driver_name = 'Jane Doe'
+    driver.save()  # a record with this driver is created
 
-       instance_id = driver.id
-       app_label = driver._meta.app_label
-       model = driver._meta.model_name
+    instance_id = driver.id
+    app_label = driver._meta.app_label
+    model = driver._meta.model_name
 
-       log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, table_name=model).last()
-       print(log.field, log.old_value, log.new_value)  # prints: driver_name John Doe Jane Doe
+    log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, table_name=model).last()
+    print(log.field, log.old_value, log.new_value)  # prints: driver_name John Doe Jane Doe
 
 Callback example
 ~~~~~~~~~~~~~~~~
@@ -139,32 +139,32 @@ Supposing you have this function in yourapp/callbacks.py which sets the
 
 .. code:: python
 
-   def set_extra_data_for_driver_name(instance, fields, logs):
-       log = logs.get('driver_name')
-       if log:
-           log.extra_data = {
-               'name_length': len(log.new_value)
-           }
-           log.save()
+    def set_extra_data_for_driver_name(instance, fields, logs):
+        log = logs.get('driver_name')
+        if log:
+            log.extra_data = {
+                'name_length': len(log.new_value)
+            }
+            log.save()
 
 Then you can add this callback function to your configuration like this:
 
 .. code:: python
 
-   FIELD_LOGGER_SETTINGS={
-       'LOGGING_APPS': {
-           'drivers': {
-               'models': {
-                   'Driver': {
-                       'fields': ['driver_name'],
-                       'callbacks': [
-                           'yourapp.callbacks.set_extra_data_for_driver_name'
-                       ]
-                   },
-               },
-           },
-       },
-   }
+    FIELD_LOGGER_SETTINGS={
+        'LOGGING_APPS': {
+            'drivers': {
+                'models': {
+                    'Driver': {
+                        'fields': ['driver_name'],
+                        'callbacks': [
+                            'yourapp.callbacks.set_extra_data_for_driver_name'
+                        ]
+                    },
+                },
+            },
+        },
+    }
 
 .. note::
 
@@ -179,18 +179,18 @@ configuration mapping. An example record is as follows:
 
 ::
 
-   {
-    'id': 2,
-    'app_label': 'drivers',
-    'model': 'driver',
-    'instance_id': 1,
-    'field': 'latest_speed',
-    'timestamp': datetime.datetime(2024, 1, 16, 9, 1, 14, 619568, tzinfo=<UTC>),
-    'old_value': 'John Doe',
-    'new_value': 'Jane Doe',
-    'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
-    'created': False, # this is a boolean field, if it is True, it means that instance is a newly created instance
-   }
+    {
+        'id': 2,
+        'app_label': 'drivers',
+        'model': 'driver',
+        'instance_id': 1,
+        'field': 'latest_speed',
+        'timestamp': datetime.datetime(2024, 1, 16, 9, 1, 14, 619568, tzinfo=<UTC>),
+        'old_value': 'John Doe',
+        'new_value': 'Jane Doe',
+        'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
+        'created': False, # this is a boolean field, if it is True, it means that instance is a newly created instance
+    }
 
 Additionally, ``FieldLog`` model provides the following properties:
 
@@ -213,5 +213,5 @@ property:
 
    .. code:: python
 
-       driver = Driver.objects.last()
-       logs = driver.fieldlog_set.all()
+        driver = Driver.objects.last()
+        logs = driver.fieldlog_set.all()

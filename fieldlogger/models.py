@@ -46,6 +46,7 @@ class FieldLog(models.Model):
             else None
         )
         instance.new_value = cls.from_db_field(field_class, instance.new_value)
+
         return instance
 
     @property
