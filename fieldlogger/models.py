@@ -1,8 +1,10 @@
+from typing import Callable, Dict, FrozenSet, NewType
+
 from django.apps import apps
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from .config import DECODER, ENCODER
+from .encoding import DECODER, ENCODER
 
 
 class FieldLog(models.Model):
@@ -70,3 +72,7 @@ class FieldLog(models.Model):
             .order_by("pk")
             .last()
         )
+
+
+LoggableModel = NewType("LoggableModel", models.Model)
+Callback = Callable[[LoggableModel, FrozenSet[str], Dict[str, FieldLog]], None]

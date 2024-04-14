@@ -5,7 +5,6 @@ import pytest
 from django.conf import settings
 
 from fieldlogger import config
-from tests.testapp.models import TestModel
 
 from .test_utils import (
     CREATE_FORM,
@@ -14,6 +13,7 @@ from .test_utils import (
     check_logs,
     set_attributes,
 )
+from .testapp.models import TestModel
 
 ORIGINAL_SETTINGS = settings.FIELD_LOGGER_SETTINGS.copy()
 

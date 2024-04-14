@@ -1,10 +1,14 @@
+from typing import FrozenSet
+
 from django.core.exceptions import FieldDoesNotExist
 
-from .models import FieldLog
+from .models import FieldLog, LoggableModel
 from .utils import rgetattr
 
 
-def log_fields(instance, fields, pre_instance=None):
+def log_fields(
+    instance: LoggableModel, fields: FrozenSet[str], pre_instance: LoggableModel = None
+) -> dict:
     logs = {}
 
     instance.refresh_from_db(fields=fields)

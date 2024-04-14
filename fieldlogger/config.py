@@ -1,43 +1,12 @@
-from datetime import date, datetime, time, timedelta
-from decimal import Decimal
 from functools import reduce
-from json import JSONDecoder, JSONEncoder
-from uuid import UUID
+from typing import Dict, FrozenSet, List, Union
 
 from django.conf import settings
-from django.core.files import File
-from django.db import models
 from django.utils.module_loading import import_string
 
+from .models import Callback, LoggableModel
+
 SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {}).copy()
-
-
-class Encoder(JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (date, datetime, time)):
-            return obj.isoformat()
-        elif isinstance(obj, timedelta):
-            return str(obj.total_seconds())
-        elif isinstance(obj, Decimal):
-            return float(obj)
-        elif isinstance(obj, (bytes, bytearray)):
-            return obj.decode()
-        elif isinstance(obj, memoryview):
-            return obj.tobytes().decode()
-        elif isinstance(obj, File):
-            return obj.name
-        elif isinstance(obj, UUID):
-            return str(obj)
-        elif isinstance(obj, models.Model):
-            return obj.pk
-        elif isinstance(obj, models.QuerySet):
-            return list(obj.values_list("pk", flat=True))
-
-        return super().default(obj)
-
-
-class Decoder(JSONDecoder):
-    pass
 
 
 def _cfg_reduce(op, key, *configs, default=None):
@@ -48,30 +17,15 @@ def _cfg_reduce(op, key, *configs, default=None):
     )
 
 
-def logging_enabled(*configs):
+def logging_enabled(*configs: Dict[str, bool]) -> bool:
     return _cfg_reduce(lambda a, b: a and b, "logging_enabled", *configs, default=True)
 
 
-def fail_silently(*configs):
+def fail_silently(*configs: Dict[str, bool]) -> bool:
     return _cfg_reduce(lambda a, b: a and b, "fail_silently", *configs, default=True)
 
 
-def logging_fields(instance):
-    model_config = LOGGING_CONFIG.get(instance._meta.label, {})
-    logging_fields = model_config.get("fields", [])
-    if not logging_fields:
-        exclude_fields = model_config.get("exclude_fields", [])
-        if exclude_fields:
-            logging_fields = [
-                field.name
-                for field in instance._meta.fields
-                if field.name not in exclude_fields
-            ]
-
-    return frozenset(logging_fields)
-
-
-def callbacks(*configs):
+def callbacks(*configs: Dict[str, List[Union[str, Callback]]]) -> List[Callback]:
     callbacks = _cfg_reduce(lambda a, b: a + b, "callbacks", *configs, default=[])
 
     callbacks = [
@@ -82,11 +36,17 @@ def callbacks(*configs):
     return callbacks
 
 
-ENCODER = SETTINGS.get("ENCODER")
-ENCODER = import_string(ENCODER) if ENCODER else Encoder
+def logging_fields(instance: LoggableModel) -> FrozenSet[str]:
+    model_config = LOGGING_CONFIG.get(instance._meta.label, {})
 
-DECODER = SETTINGS.get("DECODER")
-DECODER = import_string(DECODER) if DECODER else Decoder
+    exclude_fields = model_config.get("exclude_fields", [])
+    if not exclude_fields:
+        return frozenset(model_config.get("fields", []))
+
+    return frozenset(
+        field.name for field in instance._meta.fields if field.name not in exclude_fields
+    )
+
 
 LOGGING_CONFIG = {}
 for app, app_config in SETTINGS.get("LOGGING_APPS", {}).items():
