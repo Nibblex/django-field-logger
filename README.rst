@@ -71,7 +71,15 @@ How to set up?
          configuration. The best practice is to place your callback
          function in yourapp/callbacks.py. Callback functions must have
          three parameters as follows:
-         ``python   def your_callback(instance, fields, logs):       pass``
+
+         .. code:: python
+
+            # callback as a named function
+            def your_callback(instance, fields, logs):
+                # your code here
+
+            # callback as a lambda function
+            lambda instance, fields, logs: # your code here
 
          -  ``instance`` the model instance that is being logged.
          -  ``fields`` list of fields that are being logged.
