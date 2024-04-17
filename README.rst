@@ -59,7 +59,8 @@ How to set up?
    -  ``models`` models to be logged.
 
       -  ``fields`` is optional. If you want to log only specific
-         fields, you can specify them here.
+         fields, you can specify them here. If you want to log all
+         fields, you can use ``__all__`` as a value.
       -  ``exclude_fields`` is optional. If ``fields`` is not specified,
          all fields in the model will be logged except the ones
          specified here.
@@ -69,8 +70,8 @@ How to set up?
          You can optionally specify a callback function path in your
          configuration. The best practice is to place your callback
          function in yourapp/callbacks.py. Callback functions must have
-         the following signature:
-         ``python   def callback(instance, fields, logs):       pass``
+         three parameters as follows:
+         ``python   def your_callback(instance, fields, logs):       pass``
 
          -  ``instance`` the model instance that is being logged.
          -  ``fields`` list of fields that are being logged.

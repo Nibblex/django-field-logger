@@ -48,10 +48,6 @@ def get_callback(scope):
     return callback
 
 
-def failing_callback(instance, using_fields, logs):
-    raise Exception("This is a test exception.")
-
-
 FIELD_LOGGER_SETTINGS = {
     "CALLBACKS": [get_callback("global")],
     "LOGGING_APPS": {
@@ -59,35 +55,9 @@ FIELD_LOGGER_SETTINGS = {
             "callbacks": [get_callback("testapp")],
             "models": {
                 "TestModel": {
-                    "callbacks": [failing_callback],
-                    "fields": [
-                        "test_big_integer_field",
-                        "test_binary_field",
-                        "test_boolean_field",
-                        "test_char_field",
-                        "test_date_field",
-                        "test_datetime_field",
-                        "test_decimal_field",
-                        "test_duration_field",
-                        "test_email_field",
-                        "test_file_field",
-                        "test_file_path_field",
-                        "test_float_field",
-                        "test_generic_ip_address_field",
-                        "test_image_field",
-                        "test_integer_field",
-                        "test_json_field",
-                        "test_positive_big_integer_field",
-                        "test_positive_integer_field",
-                        "test_positive_small_integer_field",
-                        "test_slug_field",
-                        "test_small_integer_field",
-                        "test_text_field",
-                        "test_time_field",
-                        "test_url_field",
-                        "test_uuid_field",
-                        "test_foreign_key",
-                    ],
+                    "callbacks": [get_callback("testmodel")],
+                    "fields": "__all__",
+                    "exclude_fields": ["id"],
                 },
             },
         },

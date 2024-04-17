@@ -1,11 +1,13 @@
 from django.db.models.signals import post_save, pre_save
 
-from .config import LOGGING_CONFIG, logging_fields
+from .config import LOGGING_CONFIG
 from .fieldlogger import log_fields
 
 
 def pre_save_log_fields(sender, instance, *args, **kwargs):
-    using_fields = logging_fields(instance)
+    using_fields = LOGGING_CONFIG.get(sender._meta.label, {}).get(
+        "logging_fields", frozenset()
+    )
 
     update_fields = kwargs["update_fields"] or frozenset()
     if update_fields:
@@ -26,7 +28,7 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         logs = log_fields(instance, using_fields, pre_instance)
 
         # Run callbacks
-        callbacks = LOGGING_CONFIG[sender._meta.label].get("callbacks", [])
+        callbacks = LOGGING_CONFIG[sender._meta.label]["callbacks"]
         for callback in callbacks:
             try:
                 callback(instance, using_fields, logs)
@@ -36,7 +38,8 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
                 raise e
 
     # Clean up
-    del instance._fieldlogger_using_fields
+    if hasattr(instance, "_fieldlogger_using_fields"):
+        del instance._fieldlogger_using_fields
     if hasattr(instance, "_fieldlogger_pre_instance"):
         del instance._fieldlogger_pre_instance
 
