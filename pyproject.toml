@@ -20,13 +20,6 @@ profile = "black"
 known_django = ["django"]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "DJANGO", "FIRSTPARTY", "LOCALFOLDER"]
 skip = [
-    '.git',
     './venv',
     'migrations',
-    'settings.py',
-    'wsgi.py',
-    'asgi.py',
-    'manage.py',
-    'apps.py',
-    'admin.py',
 ]
