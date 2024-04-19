@@ -1,8 +1,8 @@
+# Visual Studio Code
+/.vscode
+
 # tox test environment
 /.tox
-
-# VSCode
-/.vscode
 
 # Setuptools distribution folder
 /dist
@@ -19,7 +19,7 @@
 .env
 
 # Compiled python modules
-*.pyc
+__pycache__/
 
 # logs
 *.log
