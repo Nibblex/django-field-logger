@@ -1,115 +1,130 @@
-from datetime import timedelta
-from decimal import Decimal
-from importlib import reload
-from shutil import rmtree
-from uuid import UUID
+import pytest
 
-from django.conf import settings
-from django.core.files.base import ContentFile
-from django.utils import timezone
+from fieldlogger.utils import getrmodel, hasrmodel, rgetattr, rhasattr, rsetattr
 
-from fieldlogger import config, signals
-
-NOW = timezone.now()
+from .helpers import CREATE_FORM, UPDATE_FORM
+from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
 
 
-CREATE_FORM = {
-    "test_big_integer_field": 1,
-    "test_binary_field": bytes("test", "utf-8"),
-    "test_boolean_field": True,
-    "test_char_field": "test",
-    "test_date_field": NOW.date(),
-    "test_datetime_field": NOW,
-    "test_decimal_field": Decimal(3.1499),
-    "test_duration_field": timedelta(days=1),
-    "test_email_field": "test@test.com",
-    "test_file_field": ContentFile("test", "test.txt"),
-    "test_file_path_field": "test.txt",
-    "test_float_field": 1.0,
-    "test_generic_ip_address_field": "127.0.0.1",
-    "test_image_field": ContentFile("test", "test.txt"),
-    "test_integer_field": 1,
-    "test_json_field": {"test": "test"},
-    "test_positive_big_integer_field": 1,
-    "test_positive_integer_field": 1,
-    "test_positive_small_integer_field": 1,
-    "test_slug_field": "test",
-    "test_small_integer_field": 1,
-    "test_text_field": "test",
-    "test_time_field": NOW.time(),
-    "test_url_field": "https://test.com",
-    "test_uuid_field": UUID("550e8400-e29b-41d4-a716-446655440000"),
-}
-
-UPDATE_FORM = {
-    "test_big_integer_field": 2,
-    "test_binary_field": bytes("test2", "utf-8"),
-    "test_boolean_field": False,
-    "test_char_field": "test2",
-    "test_date_field": NOW.date() + timedelta(days=1),
-    "test_datetime_field": NOW + timedelta(days=1),
-    "test_decimal_field": Decimal(3.1415),
-    "test_duration_field": timedelta(days=2),
-    "test_email_field": "test2@test.com",
-    "test_file_field": ContentFile("test2", "test2.txt"),
-    "test_file_path_field": "test2.txt",
-    "test_float_field": 2.0,
-    "test_generic_ip_address_field": "127.0.0.2",
-    "test_image_field": ContentFile("test2", "test2.txt"),
-    "test_integer_field": 2,
-    "test_json_field": {"test": "test2"},
-    "test_positive_big_integer_field": 2,
-    "test_positive_integer_field": 2,
-    "test_positive_small_integer_field": 2,
-    "test_slug_field": "test2",
-    "test_small_integer_field": 2,
-    "test_text_field": "test2",
-    "test_time_field": (NOW + timedelta(hours=1)).time(),
-    "test_url_field": "https://test2.com",
-    "test_uuid_field": UUID("550e8400-e29b-41d4-a716-446655440001"),
-}
+@pytest.fixture
+def test_instance():
+    related_instance3 = TestModel.objects.create()
+    related_instance2 = TestModelRelated2.objects.create(
+        test_char_field="test", test_related_field3=related_instance3
+    )
+    related_instance = TestModelRelated.objects.create(
+        test_char_field="test", test_related_field2=related_instance2
+    )
+    return TestModel.objects.create(**CREATE_FORM, test_related_field=related_instance)
 
 
-def set_config(cfg, scope):
-    for name, value in cfg.items():
-        if scope == "global":
-            settings.FIELD_LOGGER_SETTINGS[name.upper()] = value
-        elif scope == "testapp":
-            settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["testapp"][name] = value
-        elif scope == "testmodel":
-            settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["testapp"]["models"][
-                "TestModel"
-            ][name] = value
-        else:
-            raise ValueError(f"Invalid scope: {scope}")
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "field", [field for field in TestModel._meta.fields if field.name != "id"]
+)
+class TestUtilsOnDirectFields:
+    def test_rgetattr(self, test_instance, field):
+        assert rgetattr(test_instance, field.name) == getattr(test_instance, field.name)
 
-    reload(config)
-    reload(signals)
+    def test_rhasattr(self, test_instance, field):
+        assert rhasattr(test_instance, field.name)
 
+    def test_rsetattr(self, test_instance, field):
+        if not field.is_relation:
+            rsetattr(test_instance, field.name, UPDATE_FORM[field.name])
+            assert getattr(test_instance, field.name) == UPDATE_FORM[field.name]
 
-def set_attributes(instance, form, update_fields=False):
-    for field, value in form.items():
-        setattr(instance, field, value)
-        if update_fields:
-            instance.save(update_fields=[field])
+    def test_getrmodel(self, field):
+        assert getrmodel(TestModel, field.name) == field.related_model
 
-    if not update_fields:
-        instance.save()
-
-    rmtree(settings.MEDIA_ROOT, ignore_errors=True)
+    def test_hasrmodel(self, field):
+        assert hasrmodel(TestModel, field.name) == field.is_relation
 
 
-def check_logs(instance, expected_count, created=False):
-    assert instance.fieldlog_set.count() == expected_count
+@pytest.mark.django_db
+@pytest.mark.parametrize("sep", [".", "__"])
+@pytest.mark.parametrize(
+    "related_field",
+    [
+        (["test_related_field", "test_char_field"], None),
+        (["test_related_field", "test_related_field2"], TestModelRelated2),
+        (
+            ["test_related_field", "test_related_field2", "test_char_field"],
+            None,
+        ),
+        (
+            ["test_related_field", "test_related_field2", "test_related_field3"],
+            TestModel,
+        ),
+        (
+            [
+                "test_related_field",
+                "test_related_field2",
+                "test_related_field3",
+                "test_char_field",
+            ],
+            None,
+        ),
+    ],
+)
+class TestUtilsOnRelatedFields:
+    def test_rgetattr(self, test_instance, sep, related_field):
+        rattr, _ = related_field
+        assert rgetattr(test_instance, sep.join(rattr)) == getattr(
+            rgetattr(test_instance, sep.join(rattr[:-1])), rattr[-1]
+        )
 
-    logs = instance.fieldlog_set.filter(created=created)
-    for log in logs:
-        prev_log = log.previous_log
-        assert (prev_log is None) == created
-        assert log.app_label == "testapp"
-        assert log.model == "testmodel"
-        assert log.instance_id == instance.pk
-        assert log.old_value == (prev_log.new_value if prev_log else None)
-        assert log.new_value == getattr(instance, log.field)
-        assert log.extra_data == {"global": True, "testapp": True, "testmodel": True}
-        assert log.created == created
+    def test_rhasattr(self, test_instance, sep, related_field):
+        rattr, _ = related_field
+        assert rhasattr(test_instance, sep.join(rattr))
+
+    def test_rsetattr(self, test_instance, sep, related_field):
+        rattr, _ = related_field
+        if rattr[-1] == "test_char_field":
+            rsetattr(test_instance, sep.join(rattr), "test2")
+            assert rgetattr(test_instance, sep.join(rattr)) == "test2"
+
+    def test_getrmodel(self, sep, related_field):
+        rattr, expected_cls = related_field
+        assert getrmodel(TestModel, sep.join(rattr)) == expected_cls
+        assert (
+            expected_cls
+            == getattr(
+                getrmodel(TestModel, sep.join(rattr[:-1])),
+                rattr[-1],
+            ).field.related_model
+        )
+
+    def test_hasrmodel(self, sep, related_field):
+        rattr, expected_cls = related_field
+        assert hasrmodel(TestModel, sep.join(rattr)) == bool(expected_cls)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("sep", [".", "__"])
+@pytest.mark.parametrize(
+    "related_field",
+    [
+        [""],
+        ["non_existent_field"],
+        ["test_related_field", "non_existent_field"],
+        ["test_related_field", "test_related_field2", "non_existent_field"],
+    ],
+)
+class TestUtilsOnNonExistentFields:
+    def test_rgetattr(self, test_instance, sep, related_field):
+        with pytest.raises(AttributeError):
+            assert rgetattr(test_instance, sep.join(related_field))
+
+    def test_rhasattr(self, test_instance, sep, related_field):
+        assert not rhasattr(test_instance, sep.join(related_field))
+
+    def test_rsetattr(self, test_instance, sep, related_field):
+        rsetattr(test_instance, sep.join(related_field), "test")
+        assert rgetattr(test_instance, sep.join(related_field)) == "test"
+
+    def test_getrmodel(self, sep, related_field):
+        assert getrmodel(TestModel, sep.join(related_field)) is None
+
+    def test_hasrmodel(self, sep, related_field):
+        assert not hasrmodel(TestModel, sep.join(related_field))

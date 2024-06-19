@@ -3,6 +3,24 @@ from django.db import models
 from fieldlogger.mixins import FieldLoggerMixin
 
 
+class TestModelRelated2(FieldLoggerMixin, models.Model):
+    test_char_field = models.CharField(max_length=255, null=True)
+    test_related_field3 = models.ForeignKey(
+        "TestModel", on_delete=models.CASCADE, null=True
+    )
+
+    __test__ = False
+
+
+class TestModelRelated(FieldLoggerMixin, models.Model):
+    test_char_field = models.CharField(max_length=255, null=True)
+    test_related_field2 = models.ForeignKey(
+        TestModelRelated2, on_delete=models.CASCADE, null=True
+    )
+
+    __test__ = False
+
+
 class TestModel(FieldLoggerMixin, models.Model):
     test_big_integer_field = models.BigIntegerField(null=True)
     test_binary_field = models.BinaryField(null=True)
@@ -31,6 +49,8 @@ class TestModel(FieldLoggerMixin, models.Model):
     test_time_field = models.TimeField(null=True)
     test_url_field = models.URLField(null=True)
     test_uuid_field = models.UUIDField(null=True)
-    test_foreign_key = models.ForeignKey("self", on_delete=models.CASCADE, null=True)
+    test_related_field = models.ForeignKey(
+        TestModelRelated, on_delete=models.CASCADE, null=True
+    )
 
     __test__ = False

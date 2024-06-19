@@ -5,11 +5,12 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .encoding import DECODER, ENCODER
+from .utils import getrmodel, rgetattr
 
 
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
-    model = models.CharField(_("model class name"), max_length=100, editable=False)
+    model_name = models.CharField(_("model name"), max_length=100, editable=False)
     instance_id = models.CharField(max_length=255, editable=False)
     field = models.CharField(_("field name"), max_length=100, editable=False)
     timestamp = models.DateTimeField(auto_now=True, editable=False)
@@ -20,51 +21,62 @@ class FieldLog(models.Model):
         encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
     )
     extra_data = models.JSONField(encoder=ENCODER, decoder=DECODER, default=dict)
+    related = models.BooleanField(default=False, editable=False)
     created = models.BooleanField(default=False, editable=False)
 
     def __str__(self):
-        return f"({self.field}) {self.old_value} -> {self.new_value}"
+        return f"({self.app_label}__{self.model_name}__{self.field}, created={self.created})\
+        {self.old_value} -> {self.new_value}"
 
     @staticmethod
     def from_db_field(field_class, value):
         if field_class.__class__ is models.BinaryField:
-            value = bytes(value, "utf-8")
+            value = bytes(value, "utf-8") if isinstance(value, str) else value
         elif field_class.__class__ is models.DecimalField:
-            value = round(value, field_class.decimal_places)
+            value = round(value, field_class.decimal_places) if value else value
         elif field_class.__class__ is models.ForeignKey:
-            return field_class.related_model.objects.get(pk=value)
+            return field_class.related_model.objects.get(pk=value) if value else None
 
         return field_class.to_python(value)
 
     @classmethod
     def from_db(cls, db, field_names, values):
-        field_class = apps.get_model(values[1], values[2])._meta.get_field(values[4])
-        instance = super().from_db(db, field_names, values)
-        iid = instance.instance_id
-        instance.instance_id = int(iid) if iid.isdigit() else iid
-        instance.old_value = (
-            cls.from_db_field(field_class, instance.old_value)
-            if not instance.created
-            else None
-        )
-        instance.new_value = cls.from_db_field(field_class, instance.new_value)
+        model_class = apps.get_model(values[1], values[2])
+        fieldpath, _, field = values[4].rpartition("__")
+        model_class = getrmodel(model_class, fieldpath) or model_class
+        field_class = model_class._meta.get_field(field)
 
-        return instance
+        values[3] = model_class._meta.pk.to_python(values[3])
+        values[6] = cls.from_db_field(field_class, values[6]) if not values[9] else None
+        values[7] = cls.from_db_field(field_class, values[7])
+
+        return super().from_db(db, field_names, values)
 
     @property
-    def model_class(self):
-        return apps.get_model(self.app_label, self.model)
+    def model(self):
+        return apps.get_model(self.app_label, self.model_name)
 
     @property
     def instance(self):
-        return self.model_class.objects.get(pk=self.instance_id)
+        return self.model.objects.get(pk=self.instance_id)
+
+    @property
+    def related_model(self):
+        fieldpath, _, _ = self.field.rpartition("__")
+        return getrmodel(self.model, fieldpath)
+
+    @property
+    def related_instance(self):
+        if not self.related:
+            return None
+        return rgetattr(self.instance, self.field)
 
     @property
     def previous_log(self):
         return (
             self.__class__.objects.filter(
                 app_label=self.app_label,
-                model=self.model,
+                model_name=self.model_name,
                 instance_id=self.instance_id,
                 field=self.field,
             )

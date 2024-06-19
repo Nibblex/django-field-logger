@@ -43,7 +43,7 @@ LOGGING = {
 
 
 def get_callback(scope):
-    def callback(instance, using_fields, logs):
+    def callback(instance, logs):
         for log in logs.values():
             log.extra_data[scope] = True
             log.save(update_fields=["extra_data"])
@@ -59,6 +59,17 @@ FIELD_LOGGER_SETTINGS = {
             "models": {
                 "TestModel": {
                     "callbacks": [get_callback("testmodel")],
+                    "fields": "__all__",
+                    "exclude_fields": ["id"],
+                    "related_fields": [
+                        "test_related_field__test_char_field",
+                        "test_related_field__test_related_field2",
+                        "test_related_field__test_related_field2__test_char_field",
+                        "test_related_field__test_related_field2__test_related_field3",
+                        "test_related_field__test_related_field2__test_related_field3__test_char_field",
+                    ],
+                },
+                "TestModelRelated2": {
                     "fields": "__all__",
                     "exclude_fields": ["id"],
                 },
