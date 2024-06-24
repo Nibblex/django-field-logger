@@ -9,8 +9,8 @@ from .encoding import DECODER, ENCODER
 
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
-    model = models.CharField(_("model class name"), max_length=100, editable=False)
-    instance_id = models.CharField(max_length=255, editable=False, null=True)
+    model_name = models.CharField(_("model name"), max_length=100, editable=False)
+    instance_id = models.CharField(max_length=255, editable=False)
     field = models.CharField(_("field name"), max_length=100, editable=False)
     timestamp = models.DateTimeField(auto_now=True, editable=False)
     old_value = models.JSONField(
@@ -53,7 +53,7 @@ class FieldLog(models.Model):
 
     @property
     def model_class(self):
-        return apps.get_model(self.app_label, self.model)
+        return apps.get_model(self.app_label, self.model_name)
 
     @property
     def instance(self):
@@ -64,7 +64,7 @@ class FieldLog(models.Model):
         return (
             self.__class__.objects.filter(
                 app_label=self.app_label,
-                model=self.model,
+                model_name=self.model_name,
                 instance_id=self.instance_id,
                 field=self.field,
             )

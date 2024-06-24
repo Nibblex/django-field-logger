@@ -135,7 +135,7 @@ Supposing you have a model called ``Driver`` with fields called
 
     instance_id = driver.id
     app_label = driver._meta.app_label
-    model = driver._meta.model_name
+    model_name = driver._meta.model_name
 
     log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, table_name=model).last()
     print(log.field, log.old_value, log.new_value)  # prints: driver_name John Doe Jane Doe
