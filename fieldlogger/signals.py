@@ -37,6 +37,6 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         del instance._fieldlogger_pre_instance
 
 
-for model in LOGGING_CONFIG:
-    pre_save.connect(pre_save_log_fields, model)
-    post_save.connect(post_save_log_fields, model)
+for model_class in LOGGING_CONFIG:
+    pre_save.connect(pre_save_log_fields, model_class)
+    post_save.connect(post_save_log_fields, model_class)
