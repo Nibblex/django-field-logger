@@ -5,6 +5,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .encoding import DECODER, ENCODER
+from .utils import getrmodel
 
 
 class FieldLog(models.Model):
@@ -23,33 +24,32 @@ class FieldLog(models.Model):
     created = models.BooleanField(default=False, editable=False)
 
     def __str__(self):
-        return f"({self.field}) {self.old_value} -> {self.new_value}"
+        return f"({self.app_label}__{self.model_name}__{self.field}, created={self.created})\
+        {self.old_value} -> {self.new_value}"
 
     @staticmethod
     def from_db_field(field_class, value):
         if field_class.__class__ is models.BinaryField:
-            value = bytes(value, "utf-8")
+            value = bytes(value, "utf-8") if isinstance(value, str) else value
         elif field_class.__class__ is models.DecimalField:
-            value = round(value, field_class.decimal_places)
+            value = round(value, field_class.decimal_places) if value else value
         elif field_class.__class__ is models.ForeignKey:
-            return field_class.related_model.objects.get(pk=value)
+            return field_class.related_model.objects.get(pk=value) if value else None
 
         return field_class.to_python(value)
 
     @classmethod
     def from_db(cls, db, field_names, values):
-        field_class = apps.get_model(values[1], values[2])._meta.get_field(values[4])
-        instance = super().from_db(db, field_names, values)
-        iid = instance.instance_id
-        instance.instance_id = int(iid) if iid.isdigit() else iid
-        instance.old_value = (
-            cls.from_db_field(field_class, instance.old_value)
-            if not instance.created
-            else None
-        )
-        instance.new_value = cls.from_db_field(field_class, instance.new_value)
+        model_class = apps.get_model(values[1], values[2])
+        fieldpath, _, field = values[4].rpartition("__")
+        model_class = getrmodel(model_class, fieldpath) or model_class
+        field_class = model_class._meta.get_field(field)
 
-        return instance
+        values[3] = model_class._meta.pk.to_python(values[3])
+        values[6] = cls.from_db_field(field_class, values[6]) if not values[9] else None
+        values[7] = cls.from_db_field(field_class, values[7])
+
+        return super().from_db(db, field_names, values)
 
     @property
     def model(self):
