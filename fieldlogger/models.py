@@ -10,7 +10,7 @@ from .encoding import DECODER, ENCODER
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
     model = models.CharField(_("model class name"), max_length=100, editable=False)
-    instance_id = models.CharField(max_length=255, editable=False)
+    instance_id = models.CharField(max_length=255, editable=False, null=True)
     field = models.CharField(_("field name"), max_length=100, editable=False)
     timestamp = models.DateTimeField(auto_now=True, editable=False)
     old_value = models.JSONField(

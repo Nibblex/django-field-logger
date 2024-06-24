@@ -60,3 +60,12 @@ class TestCase2:
         set_config({"fail_silently": False, "callbacks": [lambda *args: 1 / 0]}, scope)
         with pytest.raises(ZeroDivisionError):
             TestModel.objects.create(**CREATE_FORM)
+
+
+@pytest.mark.django_db
+class TestCase3:
+    def test_log_on_bulk_create(self):
+        TestModel.objects.bulk_create([TestModel(**CREATE_FORM) for _ in range(5)])
+
+        for instance in TestModel.objects.all():
+            check_logs(instance, expected_count=len(CREATE_FORM), created=True)

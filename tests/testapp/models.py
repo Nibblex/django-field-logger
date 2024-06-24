@@ -1,5 +1,6 @@
 from django.db import models
 
+from fieldlogger.managers import FieldLoggerManager
 from fieldlogger.mixins import FieldLoggerMixin
 
 
@@ -34,3 +35,5 @@ class TestModel(FieldLoggerMixin, models.Model):
     test_foreign_key = models.ForeignKey("self", on_delete=models.CASCADE, null=True)
 
     __test__ = False
+
+    objects = FieldLoggerManager()
