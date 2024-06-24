@@ -1,6 +1,6 @@
-from .models import FieldLog
-
 from django.db import models
+
+from .models import FieldLog
 
 
 class FieldLoggerMixin(models.Model):
@@ -8,7 +8,7 @@ class FieldLoggerMixin(models.Model):
     def fieldlog_set(self):
         return FieldLog.objects.filter(
             instance_id=self.pk,
-            model=self._meta.model_name,
+            model_name=self._meta.model_name,
             app_label=self._meta.app_label,
         )
 

@@ -107,7 +107,7 @@ def check_logs(instance, expected_count, created=False):
         prev_log = log.previous_log
         assert (prev_log is None) == created
         assert log.app_label == "testapp"
-        assert log.model == "testmodel"
+        assert log.model_name == "testmodel"
         assert log.instance_id == instance.pk
         assert log.old_value == (prev_log.new_value if prev_log else None)
         assert log.new_value == getattr(instance, log.field)
