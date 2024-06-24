@@ -40,5 +40,5 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
 
 
 for model_class in LOGGING_CONFIG:
-    pre_save.connect(pre_save_log_fields, model_class._meta.label)
-    post_save.connect(post_save_log_fields, model_class._meta.label)
+    pre_save.connect(pre_save_log_fields, model_class)
+    post_save.connect(post_save_log_fields, model_class)
