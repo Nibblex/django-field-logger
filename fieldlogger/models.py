@@ -52,12 +52,12 @@ class FieldLog(models.Model):
         return instance
 
     @property
-    def model_class(self):
+    def model(self):
         return apps.get_model(self.app_label, self.model_name)
 
     @property
     def instance(self):
-        return self.model_class.objects.get(pk=self.instance_id)
+        return self.model.objects.get(pk=self.instance_id)
 
     @property
     def previous_log(self):
