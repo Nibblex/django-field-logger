@@ -203,7 +203,7 @@ configuration mapping. An example record is as follows:
 
 Additionally, ``FieldLog`` model provides the following properties:
 
--  ``model_class``: returns the model class of the instance that is
+-  ``model``: returns the model class of the instance that is
    being logged.
 -  ``instance``: returns the instance that is being logged.
 -  ``previous_log``: returns the previous log of the instance that is
