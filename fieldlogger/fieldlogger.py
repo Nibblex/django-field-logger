@@ -1,14 +1,14 @@
-from typing import FrozenSet
+from typing import Dict, FrozenSet
 
 from django.core.exceptions import FieldDoesNotExist
 
-from .models import FieldLog, LoggableModel
+from .models import Callback, FieldLog, LoggableModel
 from .utils import rgetattr
 
 
 def log_fields(
     instance: LoggableModel, fields: FrozenSet[str], pre_instance: LoggableModel = None
-) -> dict:
+) -> Dict[str, FieldLog]:
     logs = {}
 
     instance.refresh_from_db(fields=fields)
@@ -25,7 +25,7 @@ def log_fields(
 
         logs[field] = FieldLog.objects.create(
             app_label=instance._meta.app_label,
-            model=instance._meta.model_name,
+            model_name=instance._meta.model_name,
             instance_id=instance.pk,
             field=field,
             old_value=old_value,
@@ -34,3 +34,19 @@ def log_fields(
         )
 
     return logs
+
+
+def run_callbacks(
+    instance: LoggableModel,
+    callbacks: FrozenSet[Callback],
+    fields: FrozenSet[str],
+    logs: Dict[str, FieldLog],
+    fail_silently: bool = False,
+):
+    for callback in callbacks:
+        try:
+            callback(instance, fields, logs)
+        except Exception as e:
+            if fail_silently:
+                continue
+            raise e

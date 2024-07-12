@@ -63,7 +63,7 @@ for app, app_config in SETTINGS.get("LOGGING_APPS", {}).items():
         except LookupError:
             continue
 
-        LOGGING_CONFIG[f"{app}.{model}"] = {
+        LOGGING_CONFIG[model_class] = {
             "fail_silently": _fail_silently(app_config, model_config),
             "callbacks": _callbacks(app_config, model_config),
             "logging_fields": _logging_fields(model_class, model_config),

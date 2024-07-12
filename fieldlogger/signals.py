@@ -1,13 +1,11 @@
 from django.db.models.signals import post_save, pre_save
 
 from .config import LOGGING_CONFIG
-from .fieldlogger import log_fields
+from .fieldlogger import log_fields, run_callbacks
 
 
 def pre_save_log_fields(sender, instance, *args, **kwargs):
-    using_fields = LOGGING_CONFIG.get(sender._meta.label, {}).get(
-        "logging_fields", frozenset()
-    )
+    using_fields = LOGGING_CONFIG.get(sender, {}).get("logging_fields", frozenset())
 
     update_fields = kwargs["update_fields"] or frozenset()
     if update_fields:
@@ -28,14 +26,9 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         logs = log_fields(instance, using_fields, pre_instance)
 
         # Run callbacks
-        callbacks = LOGGING_CONFIG[sender._meta.label]["callbacks"]
-        for callback in callbacks:
-            try:
-                callback(instance, using_fields, logs)
-            except Exception as e:
-                if LOGGING_CONFIG[sender._meta.label]["fail_silently"]:
-                    continue
-                raise e
+        callbacks = LOGGING_CONFIG[sender]["callbacks"]
+        fail_silently = LOGGING_CONFIG[sender]["fail_silently"]
+        run_callbacks(instance, callbacks, using_fields, logs, fail_silently)
 
     # Clean up
     if hasattr(instance, "_fieldlogger_using_fields"):
@@ -44,6 +37,6 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         del instance._fieldlogger_pre_instance
 
 
-for label in LOGGING_CONFIG:
-    pre_save.connect(pre_save_log_fields, label)
-    post_save.connect(post_save_log_fields, label)
+for model_class in LOGGING_CONFIG:
+    pre_save.connect(pre_save_log_fields, model_class)
+    post_save.connect(post_save_log_fields, model_class)
