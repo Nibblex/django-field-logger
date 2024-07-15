@@ -10,7 +10,7 @@ from .utils import getrmodel
 
 class FieldLog(models.Model):
     app_label = models.CharField(max_length=100, editable=False)
-    model_name = models.CharField(_("model name"), max_length=100, editable=False)
+    model_name = models.CharField(max_length=100, editable=False)
     instance_id = models.CharField(max_length=255, editable=False)
     field = models.CharField(_("field name"), max_length=100, editable=False)
     timestamp = models.DateTimeField(auto_now=True, editable=False)

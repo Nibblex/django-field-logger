@@ -7,7 +7,7 @@ from django.conf import settings
 
 from fieldlogger import config, signals
 
-from .test_utils import CREATE_FORM, UPDATE_FORM, check_logs, set_attributes, set_config
+from .helpers import CREATE_FORM, UPDATE_FORM, check_logs, set_attributes, set_config
 from .testapp.models import TestModel
 
 ORIGINAL_SETTINGS = deepcopy(settings.FIELD_LOGGER_SETTINGS)
