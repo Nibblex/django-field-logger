@@ -3,6 +3,7 @@ from typing import Any, Dict, FrozenSet, List, Union
 
 from django.apps import apps
 from django.conf import settings
+from django.db.models.fields import Field
 from django.utils.module_loading import import_string
 
 from .models import Callback, LoggableModel
@@ -24,13 +25,18 @@ def _logging_enabled(*configs: Dict[str, bool]) -> bool:
 
 def _logging_fields(
     model_class: LoggableModel, model_config: Dict[str, Any]
-) -> FrozenSet[str]:
+) -> FrozenSet[Field]:
     fields = model_config.get("fields", [])
-    exclude_fields = model_config.get("exclude_fields", [])
-    model_fields = [field.name for field in model_class._meta.fields]
+    exclude_fields = set(model_config.get("exclude_fields", []))
+    model_fields = model_class._meta.get_fields()
 
-    return frozenset(model_fields if fields == "__all__" else fields) - frozenset(
-        exclude_fields
+    if fields == "__all__":
+        return frozenset(
+            field for field in model_fields if field.name not in exclude_fields
+        )
+
+    return frozenset(
+        field for field in model_fields if field.name in set(fields) & exclude_fields
     )
 
 

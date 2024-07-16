@@ -99,7 +99,7 @@ def set_attributes(instance, form, update_fields=False):
     rmtree(settings.MEDIA_ROOT, ignore_errors=True)
 
 
-def check_logs(instance, expected_count, created=False):
+def check_logs(instance, expected_count, extra_data=None, created=False):
     assert instance.fieldlog_set.count() == expected_count
 
     logs = instance.fieldlog_set.filter(created=created)
@@ -111,5 +111,9 @@ def check_logs(instance, expected_count, created=False):
         assert log.instance_id == instance.pk
         assert log.old_value == (prev_log.new_value if prev_log else None)
         assert log.new_value == getattr(instance, log.field)
-        assert log.extra_data == {"global": True, "testapp": True, "testmodel": True}
+        assert log.extra_data == extra_data or {
+            "global": True,
+            "testapp": True,
+            "testmodel": True,
+        }
         assert log.created == created

@@ -5,7 +5,7 @@ import pytest
 
 from django.conf import settings
 
-from fieldlogger import config, signals
+from fieldlogger import config
 
 from .helpers import CREATE_FORM, UPDATE_FORM, check_logs, set_attributes, set_config
 from .testapp.models import TestModel, TestModelRelated
@@ -44,7 +44,6 @@ def restore_settings():
     yield
     settings.FIELD_LOGGER_SETTINGS = deepcopy(ORIGINAL_SETTINGS)
     reload(config)
-    reload(signals)
 
 
 @pytest.mark.django_db
@@ -64,8 +63,19 @@ class TestCase2:
 
 @pytest.mark.django_db
 class TestCase3:
-    def test_log_on_bulk_create(self):
-        TestModel.objects.bulk_create([TestModel(**CREATE_FORM) for _ in range(5)])
+    @pytest.mark.parametrize("log_fields", [True, False])
+    @pytest.mark.parametrize("run_callbacks", [True, False])
+    def test_log_on_bulk_create(self, log_fields, run_callbacks):
+        TestModel.objects.bulk_create(
+            [TestModel(**CREATE_FORM) for _ in range(5)],
+            log_fields=log_fields,
+            run_callbacks=run_callbacks,
+        )
 
         for instance in TestModel.objects.all():
-            check_logs(instance, expected_count=len(CREATE_FORM), created=True)
+            check_logs(
+                instance,
+                expected_count=len(CREATE_FORM) if log_fields else 0,
+                extra_data=None if run_callbacks else {},
+                created=True,
+            )
