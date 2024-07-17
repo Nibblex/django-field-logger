@@ -20,7 +20,6 @@ def _log_fields(
                 new_value = getattr(instance, field.name)
                 if isinstance(field, DecimalField):
                     new_value = FieldLog.from_db_field(field, new_value)
-                    setattr(instance, field.name, new_value)
 
                 old_value = getattr(pre_instance, field.name) if pre_instance else None
 

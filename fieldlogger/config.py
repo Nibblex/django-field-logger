@@ -36,7 +36,7 @@ def _logging_fields(
         )
 
     return frozenset(
-        field for field in model_fields if field.name in set(fields) & exclude_fields
+        field for field in model_fields if field.name in set(fields) - exclude_fields
     )
 
 
