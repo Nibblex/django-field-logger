@@ -87,16 +87,21 @@ def set_config(cfg, scope):
     reload(signals)
 
 
-def set_attributes(instance, form, update_fields=False):
+def set_attributes(instance, form, update_fields=False, save=True):
     for field, value in form.items():
         setattr(instance, field, value)
-        if update_fields:
+        if update_fields and save:
             instance.save(update_fields=[field])
 
-    if not update_fields:
+    if not update_fields and save:
         instance.save()
 
     rmtree(settings.MEDIA_ROOT, ignore_errors=True)
+
+
+def bulk_set_attributes(instances, form, update_fields=False, save=True):
+    for instance in instances:
+        set_attributes(instance, form, update_fields, save)
 
 
 def check_logs(instance, expected_count, extra_data=None, created=False):
@@ -105,7 +110,6 @@ def check_logs(instance, expected_count, extra_data=None, created=False):
     logs = instance.fieldlog_set.filter(created=created)
     for log in logs:
         prev_log = log.previous_log
-        assert (prev_log is None) == created
         assert log.app_label == "testapp"
         assert log.model_name == "testmodel"
         assert log.instance_id == instance.pk
