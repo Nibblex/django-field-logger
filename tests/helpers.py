@@ -105,6 +105,7 @@ def bulk_set_attributes(instances, form, update_fields=False, save=True):
 
 
 def check_logs(instance, expected_count, extra_data=None, created=False):
+    instance.refresh_from_db()
     assert instance.fieldlog_set.count() == expected_count
 
     logs = instance.fieldlog_set.filter(created=created)
