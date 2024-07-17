@@ -70,7 +70,7 @@ def log_fields(
     instances: Iterable[LoggableModel],
     update_fields: FrozenSet[Field] = None,
     run_callbacks: bool = True,
-) -> Dict[str, FieldLog]:
+) -> Dict[Field, FieldLog]:
     from .config import LOGGING_CONFIG
 
     if sender not in LOGGING_CONFIG:

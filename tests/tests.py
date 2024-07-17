@@ -7,7 +7,14 @@ from django.conf import settings
 
 from fieldlogger import config
 
-from .helpers import CREATE_FORM, UPDATE_FORM, check_logs, set_attributes, set_config
+from .helpers import (
+    CREATE_FORM,
+    UPDATE_FORM,
+    bulk_set_attributes,
+    check_logs,
+    set_attributes,
+    set_config,
+)
 from .testapp.models import TestModel, TestModelRelated
 
 ORIGINAL_SETTINGS = deepcopy(settings.FIELD_LOGGER_SETTINGS)
@@ -22,7 +29,7 @@ def test_instance():
     return TestModel.objects.create(test_related_field=related_instance, **CREATE_FORM)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestCase1:
     def test_log_on_direct_fields(self, test_instance):
         check_logs(test_instance, expected_count=len(CREATE_FORM) + 1, created=True)
@@ -46,7 +53,7 @@ def restore_settings():
     reload(config)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.usefixtures("restore_settings")
 @pytest.mark.parametrize("scope", ["global", "testapp", "testmodel"])
 class TestCase2:
@@ -61,10 +68,10 @@ class TestCase2:
             TestModel.objects.create(**CREATE_FORM)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("log_fields", [True, False])
+@pytest.mark.parametrize("run_callbacks", [True, False])
 class TestCase3:
-    @pytest.mark.parametrize("log_fields", [True, False])
-    @pytest.mark.parametrize("run_callbacks", [True, False])
     def test_log_on_bulk_create(self, log_fields, run_callbacks):
         TestModel.objects.bulk_create(
             [TestModel(**CREATE_FORM) for _ in range(5)],
@@ -78,4 +85,26 @@ class TestCase3:
                 expected_count=len(CREATE_FORM) if log_fields else 0,
                 extra_data=None if run_callbacks else {},
                 created=True,
+            )
+
+    def test_log_on_bulk_update(self, test_instance, log_fields, run_callbacks):
+        instances = [TestModel.objects.create(**CREATE_FORM) for _ in range(5)]
+        bulk_set_attributes(instances, UPDATE_FORM, save=False)
+
+        TestModel.objects.bulk_update(
+            instances,
+            fields=UPDATE_FORM.keys(),
+            log_fields=log_fields,
+            run_callbacks=run_callbacks,
+        )
+
+        expected_count = (
+            len(CREATE_FORM) + len(UPDATE_FORM) if log_fields else len(CREATE_FORM)
+        )
+
+        for instance in instances:
+            check_logs(
+                instance,
+                expected_count=expected_count,
+                extra_data=None if run_callbacks else {},
             )
