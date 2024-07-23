@@ -104,11 +104,14 @@ def bulk_set_attributes(instances, form, update_fields=False, save=True):
         set_attributes(instance, form, update_fields, save)
 
 
-def check_logs(instance, expected_count, extra_data=None, created=False):
+def check_logs(instance, expected_count, extra_data=True, created=False):
     instance.refresh_from_db()
-    assert instance.fieldlog_set.count() == expected_count
 
-    logs = instance.fieldlog_set.filter(created=created)
+    logs = instance.fieldlog_set.order_by("-pk")[:expected_count]
+    assert logs.count() == expected_count
+
+    _extra_data = {"global": True, "testapp": True, "testmodel": True}
+
     for log in logs:
         prev_log = log.previous_log
         assert log.app_label == "testapp"
@@ -116,9 +119,10 @@ def check_logs(instance, expected_count, extra_data=None, created=False):
         assert log.instance_id == instance.pk
         assert log.old_value == (prev_log.new_value if prev_log else None)
         assert log.new_value == getattr(instance, log.field)
-        assert log.extra_data == extra_data or {
-            "global": True,
-            "testapp": True,
-            "testmodel": True,
-        }
+        assert log.extra_data == (_extra_data if extra_data else {})
         assert log.created == created
+
+
+def bulk_check_logs(instances, expected_count, extra_data=True, created=False):
+    for instance in instances:
+        check_logs(instance, expected_count, extra_data, created)
