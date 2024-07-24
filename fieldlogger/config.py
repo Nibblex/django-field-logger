@@ -1,14 +1,33 @@
 from functools import reduce
 from typing import Any, Dict, FrozenSet, List, Union
 
+from django import VERSION
 from django.apps import apps
 from django.conf import settings
+from django.db import connection
 from django.db.models.fields import Field
 from django.utils.module_loading import import_string
 
 from .models import Callback, LoggableModel
 
 SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
+DB_ENGINE = connection.vendor
+
+if DB_ENGINE == "sqlite":
+    DB_VERSION = connection.Database.sqlite_version_info
+elif DB_ENGINE == "postgresql":
+    DB_VERSION = connection.Database.pg_version
+elif DB_ENGINE == "mysql":
+    DB_VERSION = connection.Database.mysql_version
+else:
+    DB_VERSION = None
+
+
+DB_COMPATIBLE = VERSION >= (4, 0) and (
+    DB_ENGINE == "postgresql"
+    or (DB_ENGINE == "mysql" and DB_VERSION >= (10, 5))
+    or (DB_ENGINE == "sqlite" and DB_VERSION >= (3, 35))
+)
 
 
 def _cfg_reduce(op, key, *configs, default=None):

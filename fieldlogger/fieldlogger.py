@@ -1,9 +1,24 @@
 from typing import Dict, FrozenSet, Iterable
 
 from django.core.exceptions import FieldDoesNotExist
+from django.db import transaction
+from django.db.models import Max
 from django.db.models.fields import DecimalField, Field
 
 from .models import Callback, FieldLog, LoggableModel
+
+
+def is_db_compatible():
+    from .config import DB_COMPATIBLE
+
+    return DB_COMPATIBLE
+
+
+def set_primary_keys(model_class, objs):
+    with transaction.atomic():
+        max_id = model_class.objects.aggregate(max_id=Max("pk"))["max_id"] or 0
+        for i, obj in enumerate(objs):
+            obj.id = max_id + i + 1
 
 
 def _log_fields(
@@ -43,6 +58,8 @@ def _log_fields(
             logs.setdefault(instance.pk, {})[field] = field_log
 
     if field_logs_to_create:
+        if not is_db_compatible():
+            set_primary_keys(FieldLog, field_logs_to_create)
         FieldLog.objects.bulk_create(field_logs_to_create)
 
     return logs
