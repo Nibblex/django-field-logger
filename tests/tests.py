@@ -76,7 +76,7 @@ class TestCase2:
 
 
 @pytest.fixture
-def test_instances(expected_count, log_fields, run_callbacks):
+def test_instances(expected_count, log_fields, run_callbacks, ignore_conflicts):
     related_instance = TestModelRelated.objects.create()
 
     UPDATE_FORM["test_related_field"] = TestModelRelated.objects.create()
@@ -85,6 +85,7 @@ def test_instances(expected_count, log_fields, run_callbacks):
         [TestModel(test_related_field=related_instance, **CREATE_FORM) for _ in range(5)],
         log_fields=log_fields,
         run_callbacks=run_callbacks,
+        ignore_conflicts=ignore_conflicts,
     )
 
     bulk_check_logs(
@@ -97,6 +98,7 @@ def test_instances(expected_count, log_fields, run_callbacks):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("log_fields", [True, False])
 @pytest.mark.parametrize("run_callbacks", [True, False])
+@pytest.mark.parametrize("ignore_conflicts", [False, True])
 class TestCase3:
     @pytest.mark.parametrize("expected_count", [0])
     def test_log_on_bulk_create(self, test_instances, log_fields, run_callbacks):
