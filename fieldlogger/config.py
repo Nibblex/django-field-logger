@@ -15,8 +15,6 @@ DB_ENGINE = connection.vendor
 
 if DB_ENGINE == "sqlite":
     DB_VERSION = connection.Database.sqlite_version_info
-elif DB_ENGINE == "postgresql":
-    DB_VERSION = connection.Database.pg_version
 elif DB_ENGINE == "mysql":
     DB_VERSION = connection.Database.mysql_version
 else:
