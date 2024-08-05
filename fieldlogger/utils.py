@@ -1,24 +1,7 @@
 from functools import reduce
-from typing import Any, Optional
+from typing import Optional
 
 from django.db.models import Model
-
-
-def rgetattr(obj: object, rattr: str) -> Any:
-    rattr = rattr.replace(".", "__").split("__")
-    return reduce(getattr, rattr, obj)
-
-
-def rhasattr(obj: object, rattr: str) -> bool:
-    rattr = rattr.replace(".", "__").split("__")
-    obj = reduce(getattr, rattr[:-1], obj)
-    return hasattr(obj, rattr[-1])
-
-
-def rsetattr(obj: object, rattr: str, val: Any) -> None:
-    rattr = rattr.replace(".", "__").split("__")
-    obj = reduce(getattr, rattr[:-1], obj)
-    setattr(obj, rattr[-1], val)
 
 
 def getrmodel(cls: Model, rfield: str) -> Optional[Model]:

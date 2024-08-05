@@ -1,21 +1,25 @@
 import pytest
 
-from fieldlogger.utils import getrmodel, hasrmodel, rgetattr, rhasattr, rsetattr
+from fieldlogger.utils import getrmodel, hasrmodel
 
-from .helpers import CREATE_FORM, UPDATE_FORM
+from .helpers import CREATE_FORM
 from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
 
 
 @pytest.fixture
 def test_instance():
-    related_instance3 = TestModel.objects.create()
+    related_instance3 = TestModel.objects.create(**CREATE_FORM)
     related_instance2 = TestModelRelated2.objects.create(
-        test_char_field="test", test_related_field3=related_instance3
+        **CREATE_FORM, test_related_field3=related_instance3
     )
     related_instance = TestModelRelated.objects.create(
-        test_char_field="test", test_related_field2=related_instance2
+        **CREATE_FORM, test_related_field2=related_instance2
     )
-    return TestModel.objects.create(**CREATE_FORM, test_related_field=related_instance)
+    instance = TestModel.objects.create(
+        **CREATE_FORM, test_related_field=related_instance
+    )
+    instance.test_attribute = "test"
+    return instance
 
 
 @pytest.mark.django_db
@@ -23,17 +27,6 @@ def test_instance():
     "field", [field for field in TestModel._meta.fields if field.name != "id"]
 )
 class TestUtilsOnDirectFields:
-    def test_rgetattr(self, test_instance, field):
-        assert rgetattr(test_instance, field.name) == getattr(test_instance, field.name)
-
-    def test_rhasattr(self, test_instance, field):
-        assert rhasattr(test_instance, field.name)
-
-    def test_rsetattr(self, test_instance, field):
-        if not field.is_relation:
-            rsetattr(test_instance, field.name, UPDATE_FORM[field.name])
-            assert getattr(test_instance, field.name) == UPDATE_FORM[field.name]
-
     def test_getrmodel(self, field):
         assert getrmodel(TestModel, field.name) == field.related_model
 
@@ -68,22 +61,6 @@ class TestUtilsOnDirectFields:
     ],
 )
 class TestUtilsOnRelatedFields:
-    def test_rgetattr(self, test_instance, sep, related_field):
-        rattr, _ = related_field
-        assert rgetattr(test_instance, sep.join(rattr)) == getattr(
-            rgetattr(test_instance, sep.join(rattr[:-1])), rattr[-1]
-        )
-
-    def test_rhasattr(self, test_instance, sep, related_field):
-        rattr, _ = related_field
-        assert rhasattr(test_instance, sep.join(rattr))
-
-    def test_rsetattr(self, test_instance, sep, related_field):
-        rattr, _ = related_field
-        if rattr[-1] == "test_char_field":
-            rsetattr(test_instance, sep.join(rattr), "test2")
-            assert rgetattr(test_instance, sep.join(rattr)) == "test2"
-
     def test_getrmodel(self, sep, related_field):
         rattr, expected_cls = related_field
         assert getrmodel(TestModel, sep.join(rattr)) == expected_cls
@@ -112,17 +89,6 @@ class TestUtilsOnRelatedFields:
     ],
 )
 class TestUtilsOnNonExistentFields:
-    def test_rgetattr(self, test_instance, sep, related_field):
-        with pytest.raises(AttributeError):
-            assert rgetattr(test_instance, sep.join(related_field))
-
-    def test_rhasattr(self, test_instance, sep, related_field):
-        assert not rhasattr(test_instance, sep.join(related_field))
-
-    def test_rsetattr(self, test_instance, sep, related_field):
-        rsetattr(test_instance, sep.join(related_field), "test")
-        assert rgetattr(test_instance, sep.join(related_field)) == "test"
-
     def test_getrmodel(self, sep, related_field):
         assert getrmodel(TestModel, sep.join(related_field)) is None
 

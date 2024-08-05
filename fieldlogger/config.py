@@ -11,15 +11,14 @@ from django.utils.module_loading import import_string
 from .models import Callback, LoggableModel
 
 SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
-DB_ENGINE = connection.vendor
 
+DB_ENGINE = connection.vendor
 if DB_ENGINE == "sqlite":
     DB_VERSION = connection.Database.sqlite_version_info
 elif DB_ENGINE == "mysql":
     DB_VERSION = connection.Database.mysql_version
 else:
     DB_VERSION = None
-
 
 DB_COMPATIBLE = VERSION >= (4, 0) and (
     DB_ENGINE == "postgresql"

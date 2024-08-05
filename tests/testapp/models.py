@@ -4,25 +4,7 @@ from fieldlogger.managers import FieldLoggerManager
 from fieldlogger.mixins import FieldLoggerMixin
 
 
-class TestModelRelated2(FieldLoggerMixin, models.Model):
-    test_char_field = models.CharField(max_length=255, null=True)
-    test_related_field3 = models.ForeignKey(
-        "TestModel", on_delete=models.CASCADE, null=True
-    )
-
-    __test__ = False
-
-
-class TestModelRelated(FieldLoggerMixin, models.Model):
-    test_char_field = models.CharField(max_length=255, null=True)
-    test_related_field2 = models.ForeignKey(
-        TestModelRelated2, on_delete=models.CASCADE, null=True
-    )
-
-    __test__ = False
-
-
-class TestModel(FieldLoggerMixin, models.Model):
+class TestingFieldsMixin(models.Model):
     test_big_integer_field = models.BigIntegerField(null=True)
     test_binary_field = models.BinaryField(null=True)
     test_boolean_field = models.BooleanField(null=True)
@@ -50,10 +32,28 @@ class TestModel(FieldLoggerMixin, models.Model):
     test_time_field = models.TimeField(null=True)
     test_url_field = models.URLField(null=True)
     test_uuid_field = models.UUIDField(null=True)
+
+    __test__ = False
+
+    class Meta:
+        abstract = True
+
+
+class TestModelRelated2(FieldLoggerMixin, TestingFieldsMixin):
+    test_related_field3 = models.ForeignKey(
+        "TestModel", on_delete=models.CASCADE, null=True
+    )
+
+
+class TestModelRelated(FieldLoggerMixin, TestingFieldsMixin):
+    test_related_field2 = models.ForeignKey(
+        TestModelRelated2, on_delete=models.CASCADE, null=True
+    )
+
+
+class TestModel(FieldLoggerMixin, TestingFieldsMixin):
     test_related_field = models.ForeignKey(
         TestModelRelated, on_delete=models.CASCADE, null=True
     )
-
-    __test__ = False
 
     objects = FieldLoggerManager()
