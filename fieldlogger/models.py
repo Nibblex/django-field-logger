@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Callable, Dict, FrozenSet, NewType
 
 from django.apps import apps
@@ -51,15 +52,15 @@ class FieldLog(models.Model):
 
         return super().from_db(db, field_names, values)
 
-    @property
+    @cached_property
     def model(self):
         return apps.get_model(self.app_label, self.model_name)
 
-    @property
+    @cached_property
     def instance(self):
         return self.model.objects.get(pk=self.instance_id)
 
-    @property
+    @cached_property
     def previous_log(self):
         return (
             self.__class__.objects.filter(

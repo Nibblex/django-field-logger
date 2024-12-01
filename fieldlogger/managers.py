@@ -13,7 +13,7 @@ class FieldLoggerManager(models.Manager):
         if ignore_conflicts or (
             not is_db_compatible() and isinstance(self.model._meta.pk, models.AutoField)
         ):
-            set_primary_keys(self.model, objs)
+            set_primary_keys(objs, self.model)
 
         res = super().bulk_create(objs, **kwargs)
 

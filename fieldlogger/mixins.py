@@ -1,10 +1,12 @@
+from functools import cached_property
+
 from django.db import models
 
 from .models import FieldLog
 
 
 class FieldLoggerMixin(models.Model):
-    @property
+    @cached_property
     def fieldlog_set(self):
         return FieldLog.objects.filter(
             instance_id=self.pk,

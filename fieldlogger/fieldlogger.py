@@ -14,7 +14,7 @@ def is_db_compatible():
     return DB_COMPATIBLE
 
 
-def set_primary_keys(model_class, objs):
+def set_primary_keys(objs, model_class):
     with transaction.atomic():
         max_id = model_class.objects.aggregate(max_id=Max("pk"))["max_id"] or 0
         for i, obj in enumerate(objs):
@@ -59,7 +59,7 @@ def _log_fields(
 
     if field_logs_to_create:
         if not is_db_compatible():
-            set_primary_keys(FieldLog, field_logs_to_create)
+            set_primary_keys(field_logs_to_create, FieldLog)
         FieldLog.objects.bulk_create(field_logs_to_create)
 
     return logs
