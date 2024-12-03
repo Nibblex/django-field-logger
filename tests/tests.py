@@ -1,11 +1,8 @@
 from copy import deepcopy
-from importlib import reload
 
 import pytest
 
 from django.conf import settings
-
-from fieldlogger import config, fieldlogger
 
 from .helpers import (
     CREATE_FORM,
@@ -13,6 +10,7 @@ from .helpers import (
     bulk_check_logs,
     bulk_set_attributes,
     check_logs,
+    reload_modules,
     set_attributes,
     set_config,
 )
@@ -57,8 +55,7 @@ class TestCase1:
 def restore_settings():
     yield
     settings.FIELD_LOGGER_SETTINGS = deepcopy(ORIGINAL_SETTINGS)
-    reload(config)
-    reload(fieldlogger)
+    reload_modules()
 
 
 @pytest.mark.django_db(transaction=True)

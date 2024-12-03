@@ -1,11 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
+from importlib import reload
 from shutil import rmtree
 from uuid import UUID
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
+
+from fieldlogger import config, fieldlogger, signals
 
 NOW = timezone.now()
 
@@ -67,6 +70,12 @@ UPDATE_FORM = {
 }
 
 
+def reload_modules():
+    reload(config)
+    reload(fieldlogger)
+    reload(signals)
+
+
 def set_config(cfg, scope):
     for name, value in cfg.items():
         if scope == "global":
@@ -79,6 +88,8 @@ def set_config(cfg, scope):
             ][name] = value
         else:
             raise ValueError(f"Invalid scope: {scope}")
+
+    reload_modules()
 
 
 def set_attributes(instance, form, update_fields=False, save=True):
