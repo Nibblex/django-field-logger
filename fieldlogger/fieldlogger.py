@@ -5,13 +5,8 @@ from django.db import transaction
 from django.db.models import Max
 from django.db.models.fields import DecimalField, Field
 
+from .config import DB_COMPATIBLE, get_config
 from .models import Callback, FieldLog, LoggableModel
-
-
-def is_db_compatible():
-    from .config import DB_COMPATIBLE
-
-    return DB_COMPATIBLE
 
 
 def set_primary_keys(objs, model_class):
@@ -58,7 +53,7 @@ def _log_fields(
             logs.setdefault(instance.pk, {})[field] = field_log
 
     if field_logs_to_create:
-        if not is_db_compatible():
+        if not DB_COMPATIBLE:
             set_primary_keys(field_logs_to_create, FieldLog)
         FieldLog.objects.bulk_create(field_logs_to_create)
 
@@ -87,7 +82,7 @@ def log_fields(
     update_fields: FrozenSet[Field] = None,
     run_callbacks: bool = True,
 ) -> Dict[Field, FieldLog]:
-    from .config import LOGGING_CONFIG
+    LOGGING_CONFIG = get_config()
 
     if sender not in LOGGING_CONFIG:
         return {}

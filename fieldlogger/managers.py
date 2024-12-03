@@ -1,6 +1,6 @@
 from django.db import models
 
-from .fieldlogger import is_db_compatible
+from .config import DB_COMPATIBLE
 from .fieldlogger import log_fields as _log_fields
 from .fieldlogger import set_primary_keys
 
@@ -11,7 +11,7 @@ class FieldLoggerManager(models.Manager):
     ):
         ignore_conflicts = kwargs.get("ignore_conflicts", False)
         if ignore_conflicts or (
-            not is_db_compatible() and isinstance(self.model._meta.pk, models.AutoField)
+            not DB_COMPATIBLE and isinstance(self.model._meta.pk, models.AutoField)
         ):
             set_primary_keys(objs, self.model)
 

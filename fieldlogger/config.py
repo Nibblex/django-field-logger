@@ -10,8 +10,6 @@ from django.utils.module_loading import import_string
 
 from .models import Callback, LoggableModel
 
-SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
-
 DB_ENGINE = connection.vendor
 if DB_ENGINE == "sqlite":
     DB_VERSION = connection.Database.sqlite_version_info
@@ -27,60 +25,68 @@ DB_COMPATIBLE = VERSION >= (4, 0) and (
 )
 
 
-def _cfg_reduce(op, key, *configs, default=None):
-    return reduce(
-        op,
-        [config.get(key, default) for config in configs],
-        SETTINGS.get(key.upper(), default),
-    )
+class LoggingConfig:
+    __config = {}
 
+    def __init__(self):
+        self.__settings = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
 
-def _logging_enabled(*configs: Dict[str, bool]) -> bool:
-    return _cfg_reduce(lambda a, b: a and b, "logging_enabled", *configs, default=True)
-
-
-def _logging_fields(
-    model_class: LoggableModel, model_config: Dict[str, Any]
-) -> FrozenSet[Field]:
-    fields = model_config.get("fields", [])
-    exclude_fields = set(model_config.get("exclude_fields", []))
-    model_fields = model_class._meta.get_fields()
-
-    if fields == "__all__":
-        return frozenset(
-            field for field in model_fields if field.name not in exclude_fields
+    def __cfg_reduce(self, op, key, *configs, default=None):
+        return reduce(
+            op,
+            [config.get(key, default) for config in configs],
+            self.__settings.get(key.upper(), default),
         )
 
-    return frozenset(
-        field for field in model_fields if field.name in set(fields) - exclude_fields
-    )
+    def __logging_enabled(self, *configs: Dict[str, bool]) -> bool:
+        return self.__cfg_reduce(
+            lambda a, b: a and b, "logging_enabled", *configs, default=True
+        )
 
+    def __logging_fields(
+        self, model_class: LoggableModel, model_config: Dict[str, Any]
+    ) -> FrozenSet[Field]:
+        fields = model_config.get("fields", [])
+        exclude_fields = set(model_config.get("exclude_fields", []))
+        model_fields = model_class._meta.get_fields()
 
-def _callbacks(*configs: Dict[str, List[Union[str, Callback]]]) -> List[Callback]:
-    callbacks = _cfg_reduce(lambda a, b: a + b, "callbacks", *configs, default=[])
+        if fields == "__all__":
+            return frozenset(
+                field for field in model_fields if field.name not in exclude_fields
+            )
 
-    callbacks = [
-        import_string(callback) if isinstance(callback, str) else callback
-        for callback in callbacks
-    ]
+        return frozenset(
+            field for field in model_fields if field.name in set(fields) - exclude_fields
+        )
 
-    return callbacks
+    def __callbacks(
+        self, *configs: Dict[str, List[Union[str, Callback]]]
+    ) -> List[Callback]:
+        callbacks = self.__cfg_reduce(
+            lambda a, b: a + b, "callbacks", *configs, default=[]
+        )
 
+        callbacks = [
+            import_string(callback) if isinstance(callback, str) else callback
+            for callback in callbacks
+        ]
 
-def _fail_silently(*configs: Dict[str, bool]) -> bool:
-    return _cfg_reduce(lambda a, b: a and b, "fail_silently", *configs, default=True)
+        return callbacks
 
+    def __fail_silently(self, *configs: Dict[str, bool]) -> bool:
+        return self.__cfg_reduce(
+            lambda a, b: a and b, "fail_silently", *configs, default=True
+        )
 
-class LoggingConfig:
-    _config = {}
-
-    def __init__(self, settings: Dict[str, Any]):
-        for app, app_config in settings.get("LOGGING_APPS", {}).items():
-            if not app_config or not _logging_enabled(app_config):
+    def __set_config(self):
+        for app, app_config in self.__settings.get("LOGGING_APPS", {}).items():
+            if not app_config or not self.__logging_enabled(app_config):
                 continue
 
             for model, model_config in app_config.get("models", {}).items():
-                if not model_config or not _logging_enabled(app_config, model_config):
+                if not model_config or not self.__logging_enabled(
+                    app_config, model_config
+                ):
                     continue
 
                 try:
@@ -88,17 +94,23 @@ class LoggingConfig:
                 except LookupError:
                     continue
 
-                self._config[model_class] = {
-                    "logging_fields": _logging_fields(model_class, model_config),
-                    "callbacks": _callbacks(app_config, model_config),
-                    "fail_silently": _fail_silently(app_config, model_config),
+                self.__config[model_class] = {
+                    "logging_fields": self.__logging_fields(model_class, model_config),
+                    "callbacks": self.__callbacks(app_config, model_config),
+                    "fail_silently": self.__fail_silently(app_config, model_config),
                 }
 
+    def get_config(self):
+        if not self.__config:
+            self.__set_config()
+
+        return self.__config
+
     def __iter__(self):
-        return iter(self._config)
+        return iter(self.__config)
 
     def __getitem__(self, model_class: LoggableModel):
-        return self._config.get(model_class, {})
+        return self.__config.get(model_class, {})
 
 
-LOGGING_CONFIG = LoggingConfig(SETTINGS)
+get_config = LoggingConfig().get_config

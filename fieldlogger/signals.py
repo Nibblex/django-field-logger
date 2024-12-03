@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save
 
-from .config import LOGGING_CONFIG
+from .config import get_config
 from .fieldlogger import log_fields
 
 
@@ -20,6 +20,6 @@ def post_save_log_fields(sender, instance, created, *args, **kwargs):
         del instance._fieldlogger_pre_instance
 
 
-for model_class in LOGGING_CONFIG:
+for model_class in get_config():
     pre_save.connect(pre_save_log_fields, model_class)
     post_save.connect(post_save_log_fields, model_class)

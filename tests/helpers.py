@@ -1,14 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal
-from importlib import reload
 from shutil import rmtree
 from uuid import UUID
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
-
-from fieldlogger import config, signals
 
 NOW = timezone.now()
 
@@ -82,9 +79,6 @@ def set_config(cfg, scope):
             ][name] = value
         else:
             raise ValueError(f"Invalid scope: {scope}")
-
-    reload(config)
-    reload(signals)
 
 
 def set_attributes(instance, form, update_fields=False, save=True):

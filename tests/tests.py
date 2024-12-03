@@ -5,7 +5,7 @@ import pytest
 
 from django.conf import settings
 
-from fieldlogger import config
+from fieldlogger import config, fieldlogger
 
 from .helpers import (
     CREATE_FORM,
@@ -58,6 +58,7 @@ def restore_settings():
     yield
     settings.FIELD_LOGGER_SETTINGS = deepcopy(ORIGINAL_SETTINGS)
     reload(config)
+    reload(fieldlogger)
 
 
 @pytest.mark.django_db(transaction=True)
