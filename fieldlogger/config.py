@@ -56,7 +56,9 @@ class LoggingConfig:
             )
 
         return frozenset(
-            field for field in model_fields if field.name in set(fields) - exclude_fields
+            field
+            for field in model_fields
+            if field.name in set(fields) - exclude_fields
         )
 
     def __callbacks(

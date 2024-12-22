@@ -23,7 +23,12 @@ class FieldLoggerManager(models.Manager):
         return res
 
     def bulk_update(
-        self, objs, fields, log_fields: bool = True, run_callbacks: bool = True, **kwargs
+        self,
+        objs,
+        fields,
+        log_fields: bool = True,
+        run_callbacks: bool = True,
+        **kwargs,
     ):
         if log_fields:
             pre_instances = self.in_bulk([obj.pk for obj in objs])

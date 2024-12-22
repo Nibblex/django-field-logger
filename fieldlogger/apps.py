@@ -6,4 +6,4 @@ class FieldloggerConfig(AppConfig):
     name = "fieldlogger"
 
     def ready(self):
-        import fieldlogger.signals  # noqa
+        import fieldlogger.signals  # noqa: F401

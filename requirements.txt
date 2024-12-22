@@ -1,7 +1,7 @@
 build
 django
+pre-commit
 pytest
 pytest-django
-pre-commit
 tox
 twine

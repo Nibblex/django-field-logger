@@ -3,23 +3,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
-line-length = 90
+line-length = 88
+indent-width = 4
 
-[tool.black]
-line-length = 90
-exclude = '''
-/(
-    \.git
-  | \.venv
-  | migrations
-)/
-'''
-
-[tool.isort]
-profile = "black"
-known_django = ["django"]
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "DJANGO", "FIRSTPARTY", "LOCALFOLDER"]
-skip = [
-    './venv',
-    'migrations',
-]
+[tool.ruff.lint]
+select = ["I"]
