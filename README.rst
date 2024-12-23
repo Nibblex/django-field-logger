@@ -10,6 +10,8 @@
 .. image:: https://results.pre-commit.ci/badge/github/Nibblex/django-field-logger/main.svg
    :target: https://results.pre-commit.ci/latest/github/Nibblex/django-field-logger/main
    :alt: pre-commit.ci status
+.. image:: https://codecov.io/gh/Nibblex/django-field-logger/graph/badge.svg?token=H1N619SS8P
+   :target: https://codecov.io/gh/Nibblex/django-field-logger
 .. image:: https://img.shields.io/pypi/l/relattrs
    :target: https://github.com/Nibblex/django-field-logger/blob/main/LICENSE
    :alt: PyPI - License
