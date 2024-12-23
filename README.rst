@@ -7,6 +7,9 @@
 .. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
    :target: https://github.com/astral-sh/ruff
    :alt: Ruff
+.. image:: https://results.pre-commit.ci/badge/github/Nibblex/django-field-logger/main.svg
+   :target: https://results.pre-commit.ci/latest/github/Nibblex/django-field-logger/main
+   :alt: pre-commit.ci status
 .. image:: https://img.shields.io/pypi/l/relattrs
    :target: https://github.com/Nibblex/django-field-logger/blob/main/LICENSE
    :alt: PyPI - License
