@@ -1,7 +1,6 @@
 from copy import deepcopy
 
 import pytest
-
 from django.conf import settings
 
 from .helpers import (
@@ -80,14 +79,20 @@ def test_instances(expected_count, log_fields, run_callbacks, ignore_conflicts):
     UPDATE_FORM["test_related_field"] = TestModelRelated.objects.create()
 
     instances = TestModel.objects.bulk_create(
-        [TestModel(test_related_field=related_instance, **CREATE_FORM) for _ in range(5)],
+        [
+            TestModel(test_related_field=related_instance, **CREATE_FORM)
+            for _ in range(5)
+        ],
         log_fields=log_fields,
         run_callbacks=run_callbacks,
         ignore_conflicts=ignore_conflicts,
     )
 
     bulk_check_logs(
-        instances, len(CREATE_FORM) + 1 if log_fields else 0, run_callbacks, created=True
+        instances,
+        len(CREATE_FORM) + 1 if log_fields else 0,
+        run_callbacks,
+        created=True,
     )
     yield instances
     bulk_check_logs(instances, expected_count if log_fields else 0, run_callbacks)

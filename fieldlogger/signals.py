@@ -6,7 +6,9 @@ from .fieldlogger import log_fields
 
 def pre_save_log_fields(sender, instance, *args, **kwargs):
     if instance.pk:
-        instance._fieldlogger_pre_instance = sender.objects.filter(pk=instance.pk).first()
+        instance._fieldlogger_pre_instance = sender.objects.filter(
+            pk=instance.pk
+        ).first()
 
 
 def post_save_log_fields(sender, instance, created, *args, **kwargs):
