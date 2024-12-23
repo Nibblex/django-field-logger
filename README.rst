@@ -1,3 +1,16 @@
+.. image:: https://img.shields.io/pypi/pyversions/django-field-logger
+   :target: https://www.python.org/
+   :alt: PyPI - Python Version
+.. image:: https://img.shields.io/pypi/v/django-field-logger?color=blue
+   :target: https://pypi.org/project/django-field-logger/
+   :alt: PyPI - Version
+.. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
+   :target: https://github.com/astral-sh/ruff
+   :alt: Ruff
+.. image:: https://img.shields.io/pypi/l/relattrs
+   :target: https://github.com/Nibblex/django-field-logger/blob/main/LICENSE
+   :alt: PyPI - License
+
 Django Field Logger
 ===================
 
