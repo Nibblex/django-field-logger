@@ -25,8 +25,10 @@ class FieldLog(models.Model):
     created = models.BooleanField(default=False, editable=False)
 
     def __str__(self):
-        return f"({self.app_label}__{self.model_name}__{self.field}, created={self.created})\
+        return (
+            f"({self.app_label}__{self.model_name}__{self.field}, created={self.created})\
         {self.old_value} -> {self.new_value}"
+        )
 
     @staticmethod
     def from_db_field(field_class, value):
