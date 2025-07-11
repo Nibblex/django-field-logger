@@ -56,7 +56,9 @@ class FieldLog(models.Model):
         values[3] = model_class._meta.pk.to_python(values[3])
 
         if field_class is not None:
-            values[6] = cls.from_db_field(field_class, values[6]) if not values[9] else None
+            values[6] = (
+                cls.from_db_field(field_class, values[6]) if not values[9] else None
+            )
             values[7] = cls.from_db_field(field_class, values[7])
         else:
             values[6] = None if not values[9] else values[6]
