@@ -33,9 +33,8 @@ def test_instance(expected_count):
 
 @pytest.mark.django_db(transaction=True)
 class TestCase1:
-    @pytest.mark.parametrize("test_instance", [(0, True)], indirect=True)
     @pytest.mark.parametrize("expected_count", [0])
-    def test_log_on_direct_fields(self, test_instance, expected_count):
+    def test_log_on_create(self, test_instance, expected_count):
         pass
 
     @pytest.mark.parametrize("update_fields", [False, True])

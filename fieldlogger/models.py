@@ -2,6 +2,7 @@ from functools import cached_property
 from typing import Callable, Dict, FrozenSet, NewType
 
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -46,11 +47,22 @@ class FieldLog(models.Model):
         model_class = apps.get_model(values[1], values[2])
         fieldpath, _, field = values[4].rpartition("__")
         model_class = getrmodel(model_class, fieldpath) or model_class
-        field_class = model_class._meta.get_field(field)
+
+        try:
+            field_class = model_class._meta.get_field(field)
+        except FieldDoesNotExist:
+            field_class = None
 
         values[3] = model_class._meta.pk.to_python(values[3])
-        values[6] = cls.from_db_field(field_class, values[6]) if not values[9] else None
-        values[7] = cls.from_db_field(field_class, values[7])
+
+        if field_class is not None:
+            values[6] = (
+                cls.from_db_field(field_class, values[6]) if not values[9] else None
+            )
+            values[7] = cls.from_db_field(field_class, values[7])
+        else:
+            values[6] = None if not values[9] else values[6]
+            values[7] = values[7]
 
         return super().from_db(db, field_names, values)
 
