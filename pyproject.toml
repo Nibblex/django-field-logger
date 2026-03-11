@@ -1,12 +1,99 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-field-logger"
+version = "0.1.1"
+description = "A Django app for logging changes in model fields."
+readme = {file = "README.rst", content-type = "text/x-rst"}
+license = {text = "MIT"}
+authors = [
+    {name = "Sergio Rodríguez", email = "srodriguez3441@gmail.com"},
+]
+maintainers = [
+    {name = "Sergio Rodríguez", email = "srodriguez3441@gmail.com"},
+]
+requires-python = ">=3.8"
+dependencies = [
+    "Django>=3.1",
+]
+classifiers = [
+    "Framework :: Django",
+    "Framework :: Django :: 3.1",
+    "Framework :: Django :: 3.2",
+    "Framework :: Django :: 4.0",
+    "Framework :: Django :: 4.1",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/nibblex/django-field-logger"
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "pytest-django",
+    "ruff",
+    "tox",
+    "twine",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+django_find_project = false
+pythonpath = [".", "fieldlogger"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+env_list = py{313,312,311,310}-django{52,51,50}
+           py{313,312,311,310,39,38}-django{42,41}
+           py{312,311,310,39,38}-django{40}
+           py{310,39,38}-django{32}
+           py{39,38}-django{31}
+
+[testenv]
+deps =
+    pytest
+    pytest-django
+    django52: Django>=5.2,<5.3
+    django51: Django>=5.1,<5.2
+    django50: Django>=5.0,<5.1
+    django42: Django>=4.2,<4.3
+    django41: Django>=4.1,<4.2
+    django40: Django>=4.0,<4.1
+    django32: Django>=3.2,<3.3
+    django31: Django>=3.1,<3.2
+
+commands = pytest -q
+allowlist_externals = pytest
+"""
 
 [tool.ruff]
 line-length = 88
 indent-width = 4
 exclude = [
-    "*/migrations/*"
+    "*/migrations/*",
 ]
 
 [tool.ruff.lint]

@@ -1,9 +1,0 @@
-build
-django
-pre-commit
-pytest
-pytest-cov
-pytest-django
-ruff
-tox
-twine
