@@ -26,6 +26,8 @@ classifiers = [
     "Framework :: Django :: 4.1",
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -36,6 +38,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
@@ -66,7 +69,7 @@ filterwarnings = [
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-env_list = py{313,312,311,310}-django{52,51,50}
+env_list = py{314,313,312,311,310}-django{52,51,50}
            py{313,312,311,310,39,38}-django{42,41}
            py{312,311,310,39,38}-django{40}
            py{310,39,38}-django{32}
