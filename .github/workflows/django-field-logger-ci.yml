@@ -31,7 +31,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e ".[dev]"
 
-      name: Run tox
+    - name: Run tox
       run: tox -q -e py$(echo ${{ matrix.python-version }} | tr -d .)
 
     - name: Upload coverage reports to Codecov
