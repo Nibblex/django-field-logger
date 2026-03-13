@@ -19,6 +19,9 @@ dependencies = [
     "Django>=3.1",
 ]
 classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Framework :: Django",
     "Framework :: Django :: 3.1",
     "Framework :: Django :: 3.2",
@@ -28,9 +31,6 @@ classifiers = [
     "Framework :: Django :: 5.0",
     "Framework :: Django :: 5.1",
     "Framework :: Django :: 5.2",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -41,9 +41,6 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-
-[project.urls]
-Homepage = "https://github.com/nibblex/django-field-logger"
 
 [project.optional-dependencies]
 dev = [
@@ -57,14 +54,18 @@ dev = [
     "twine",
 ]
 
+[project.urls]
+Homepage = "https://github.com/nibblex/django-field-logger"
+
+[tool.setuptools]
+include-package-data = true
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
-python_files = ["tests.py", "test_*.py", "*_tests.py"]
 django_find_project = false
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
 pythonpath = [".", "fieldlogger"]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
+filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.tox]
 legacy_tox_ini = """
