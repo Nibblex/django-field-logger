@@ -4,6 +4,10 @@
 # tox test environment
 /.tox
 
+# coverage reports
+coverage.xml
+.coverage
+
 # Setuptools distribution folder
 /dist
 
