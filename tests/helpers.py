@@ -16,6 +16,7 @@ NOW = timezone.now()
 CREATE_FORM = {
     "test_big_integer_field": 1,
     "test_binary_field": bytes("test", "utf-8"),
+    "test_binary_memoryview_field": memoryview(bytes("test", "utf-8")),
     "test_boolean_field": True,
     "test_char_field": "test",
     "test_date_field": NOW.date(),

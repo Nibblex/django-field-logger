@@ -7,6 +7,7 @@ from fieldlogger.mixins import FieldLoggerMixin
 class TestingFieldsMixin(models.Model):
     test_big_integer_field = models.BigIntegerField(null=True)
     test_binary_field = models.BinaryField(null=True)
+    test_binary_memoryview_field = models.BinaryField(null=True)
     test_boolean_field = models.BooleanField(null=True)
     test_char_field = models.CharField(max_length=255, null=True)
     test_date_field = models.DateField(null=True)
