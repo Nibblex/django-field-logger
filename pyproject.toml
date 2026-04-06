@@ -53,6 +53,10 @@ dev = [
     "tox",
     "twine",
 ]
+databases = [
+    "mysqlclient",
+    "psycopg2-binary",
+]
 
 [project.urls]
 Homepage = "https://github.com/nibblex/django-field-logger"
@@ -89,6 +93,7 @@ deps =
     django32: Django>=3.2,<3.3
     django31: Django>=3.1,<3.2
 
+passenv = MYSQL_* POSTGRES_*
 commands = pytest -q
 allowlist_externals = pytest
 """
