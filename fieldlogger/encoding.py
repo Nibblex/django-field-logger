@@ -1,46 +1,58 @@
+"""JSON encoding/decoding of logged field values.
+
+Custom classes can be configured through the ``ENCODER`` and ``DECODER``
+keys of ``FIELD_LOGGER_SETTINGS`` as dotted import paths. They are part
+of the ``FieldLog`` model definition, so they are resolved at import time
+and changing them requires a restart.
+"""
+
+from base64 import b64encode
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from json import JSONDecoder, JSONEncoder
 from uuid import UUID
 
-from django.conf import settings
 from django.core.files import File
 from django.db import models
 from django.utils.module_loading import import_string
 
-SETTINGS = getattr(settings, "FIELD_LOGGER_SETTINGS", {})
+from .config import get_settings
 
 
 class Encoder(JSONEncoder):
+    """JSON encoder for the value types of the standard Django fields."""
+
     def default(self, obj):
         if isinstance(obj, (date, datetime, time)):
             return obj.isoformat()
-        elif isinstance(obj, timedelta):
+        if isinstance(obj, timedelta):
             return str(obj.total_seconds())
-        elif isinstance(obj, Decimal):
+        if isinstance(obj, Decimal):
             return float(obj)
-        elif isinstance(obj, (bytes, bytearray)):
-            return obj.decode()
-        elif isinstance(obj, memoryview):
-            return obj.tobytes().decode()
-        elif isinstance(obj, File):
+        if isinstance(obj, (bytes, bytearray, memoryview)):
+            # Base64 so that arbitrary (non-UTF8) binary data is encodable.
+            return b64encode(bytes(obj)).decode("ascii")
+        if isinstance(obj, File):
             return obj.name
-        elif isinstance(obj, UUID):
+        if isinstance(obj, UUID):
             return str(obj)
-        elif isinstance(obj, models.Model):
+        if isinstance(obj, models.Model):
             return obj.pk
-        elif isinstance(obj, models.QuerySet):
+        if isinstance(obj, models.QuerySet):
             return list(obj.values_list("pk", flat=True))
 
         return super().default(obj)
 
 
 class Decoder(JSONDecoder):
-    pass
+    """Default JSON decoder; values are converted back to Python objects
+    by ``FieldLog.from_db``."""
 
 
-ENCODER = SETTINGS.get("ENCODER")
-ENCODER = import_string(ENCODER) if ENCODER else Encoder
+def _load_class(key: str, default: type) -> type:
+    path = get_settings().get(key)
+    return import_string(path) if path else default
 
-DECODER = SETTINGS.get("DECODER")
-DECODER = import_string(DECODER) if DECODER else Decoder
+
+ENCODER = _load_class("ENCODER", Encoder)
+DECODER = _load_class("DECODER", Decoder)

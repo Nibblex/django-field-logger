@@ -52,7 +52,7 @@ How to set up?
                     },
                 },
                 'callbacks': [
-                    lambda instances, fields, logs: print(instances, fields, logs),
+                    lambda instance, fields, logs: print(instance, fields, logs),
                     'yourapp.app.callbacks.your_function_name'
                 ], # (default: [])
             },
@@ -82,6 +82,13 @@ How to set up?
       -  ``exclude_fields`` is optional. If ``fields`` is not specified,
          all fields in the model will be logged except the ones
          specified here.
+
+         Only fields with their own database column are loggable:
+         reverse relations and database-generated fields
+         (``GeneratedField``) are always skipped. Many-to-many fields
+         are supported through the ``m2m_changed`` signal (see
+         `Many-to-many fields`_).
+
       -  ``callbacks`` is optional. If you want to add a callback
          function to be called after logging all models in all apps, you
          can add it here. Callback functions must be callable objects.
@@ -111,9 +118,13 @@ How it works?
    file based on your environment.
 -  Initializes ``LOGGING_APPS`` with the relative project paths of your
    models based on your configuration variable.
--  Binds to pre_save signal of each loggable model.
+-  Binds to the ``pre_save`` and ``post_save`` signals of each loggable
+   model, and to the ``m2m_changed`` signal of each loggable
+   many-to-many field.
 -  For each field specified in the configuration variable, creates a
    record in the ``FieldLog`` model for each instance update.
+-  Fixture loading (``loaddata``) is a restore, not a change, so it is
+   never logged.
 
 Example
 ~~~~~~~
@@ -141,6 +152,8 @@ Supposing you have a model called ``Driver`` with fields called
 
 .. code:: python
 
+    from fieldlogger.models import FieldLog
+
     driver = Driver.objects.last()
     driver.latest_speed = 5
     driver.save()  # fieldlogger won't create a record since 'latest_speed' was not among the loggable fields
@@ -155,7 +168,7 @@ Supposing you have a model called ``Driver`` with fields called
     app_label = driver._meta.app_label
     model_name = driver._meta.model_name
 
-    log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, table_name=model).last()
+    log = FieldLog.objects.filter(instance_id=instance_id, app_label=app_label, model_name=model_name).last()
     print(log.field, log.old_value, log.new_value)  # prints: driver_name John Doe Jane Doe
 
 Callback example
@@ -209,10 +222,10 @@ configuration mapping. An example record is as follows:
     {
         'id': 2,
         'app_label': 'drivers',
-        'model': 'driver',
+        'model_name': 'driver',
         'instance_id': 1,
-        'field': 'latest_speed',
-        'timestamp': datetime.datetime(2024, 1, 16, 9, 1, 14, 619568, tzinfo=<UTC>),
+        'field': 'driver_name',
+        'timestamp': datetime.datetime(2024, 1, 16, 9, 1, 14, 619568, tzinfo=<UTC>), # set when the log is created
         'old_value': 'John Doe',
         'new_value': 'Jane Doe',
         'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
@@ -224,8 +237,20 @@ Additionally, ``FieldLog`` model provides the following properties:
 -  ``model``: returns the model class of the instance that is
    being logged.
 -  ``instance``: returns the instance that is being logged.
--  ``previous_log``: returns the previous log of the instance that is
-   being logged.
+-  ``previous_log``: returns the previous log of the same field of the
+   same instance, if any.
+
+Values are stored as JSON and converted back to Python objects when a
+log is loaded:
+
+-  Binary values are stored base64-encoded, so any binary content is
+   supported.
+-  Foreign key values are resolved back to model instances lazily (no
+   query until the value is accessed). If the related instance was
+   deleted, an unsaved instance carrying only the primary key is
+   returned, so reading old logs never fails.
+-  Models with a composite primary key (Django >= 5.2) are not
+   supported.
 
 The FieldLoggerMixin
 ~~~~~~~~~~~~~~~~~~~~
@@ -242,3 +267,55 @@ property:
 
         driver = Driver.objects.last()
         logs = driver.fieldlog_set.all()
+
+The FieldLoggerManager
+~~~~~~~~~~~~~~~~~~~~~~
+
+Django signals are not fired on bulk operations, so changes made through
+``bulk_create`` and ``bulk_update`` are not logged by default. This
+package provides a manager called ``FieldLoggerManager`` that overrides
+both methods to log field changes as well:
+
+.. code:: python
+
+    from django.db import models
+
+    from fieldlogger.managers import FieldLoggerManager
+
+    class Driver(models.Model):
+        # ...
+
+        objects = FieldLoggerManager()
+
+Both methods accept two extra keyword arguments:
+
+-  ``log_fields`` set it to ``False`` to skip logging for that call
+   (default: ``True``).
+-  ``run_callbacks`` set it to ``False`` to skip the configured
+   callbacks for that call (default: ``True``).
+
+.. code:: python
+
+    Driver.objects.bulk_create([Driver(driver_name='John Doe')])
+    Driver.objects.bulk_update(drivers, ['driver_name'], run_callbacks=False)
+
+Many-to-many fields
+~~~~~~~~~~~~~~~~~~~
+
+Many-to-many changes do not go through ``save()``, so they are logged
+from the ``m2m_changed`` signal instead. Any loggable many-to-many
+field gets one log per change, holding the sorted lists of related
+primary keys before and after:
+
+.. code:: python
+
+    driver.cars.add(car1, car2)
+    log = driver.fieldlog_set.get(field='cars')
+    print(log.old_value, log.new_value)  # prints: [] [1, 2]
+
+-  ``add``, ``remove``, ``set`` and ``clear`` are logged, from both
+   sides of the relation (``car.drivers.add(driver)`` also logs the
+   change on ``driver``).
+-  Changes made directly on an explicit ``through`` model (e.g.
+   ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
+   they are not logged; this mirrors Django's own behavior.

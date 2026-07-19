@@ -1,3 +1,4 @@
+import django
 from django.db import models
 
 from fieldlogger.managers import FieldLoggerManager
@@ -16,9 +17,7 @@ class TestingFieldsMixin(models.Model):
     test_duration_field = models.DurationField(null=True)
     test_email_field = models.EmailField(null=True)
     test_file_field = models.FileField(upload_to="test_file_field", null=True)
-    test_file_path_field = models.FilePathField(
-        path="fieldlogger/tests/testapp", null=True
-    )
+    test_file_path_field = models.FilePathField(path="tests/testapp", null=True)
     test_float_field = models.FloatField(null=True)
     test_generic_ip_address_field = models.GenericIPAddressField(null=True)
     test_image_field = models.ImageField(upload_to="test_image_field", null=True)
@@ -56,5 +55,24 @@ class TestModel(FieldLoggerMixin, TestingFieldsMixin):
     test_related_field = models.ForeignKey(
         TestModelRelated, on_delete=models.CASCADE, null=True
     )
+    test_one_to_one_field = models.OneToOneField(
+        TestModelRelated2, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    test_many_to_many_field = models.ManyToManyField(
+        TestModelRelated2, related_name="test_reverse_m2m"
+    )
+    test_unique_field = models.CharField(max_length=32, unique=True, null=True)
 
     objects = FieldLoggerManager()
+
+
+if django.VERSION >= (5, 0):
+    TestModel.add_to_class(
+        "test_generated_field",
+        models.GeneratedField(
+            expression=models.F("test_integer_field") + 1,
+            output_field=models.IntegerField(),
+            db_persist=True,
+            null=True,
+        ),
+    )

@@ -83,6 +83,7 @@ class TestUtilsOnRelatedFields:
     "related_field",
     [
         [""],
+        ["objects"],
         ["non_existent_field"],
         ["test_related_field", "non_existent_field"],
         ["test_related_field", "test_related_field2", "non_existent_field"],

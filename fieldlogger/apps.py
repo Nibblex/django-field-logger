@@ -6,4 +6,8 @@ class FieldloggerConfig(AppConfig):
     name = "fieldlogger"
 
     def ready(self):
-        import fieldlogger.signals  # noqa: F401
+        # Imported here because signals (and the configuration it loads)
+        # need the app registry to be ready.
+        from . import signals
+
+        signals.connect_signals()

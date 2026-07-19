@@ -1,6 +1,5 @@
 from datetime import timedelta
 from decimal import Decimal
-from importlib import reload
 from shutil import rmtree
 from uuid import UUID
 
@@ -8,7 +7,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
-from fieldlogger import config, fieldlogger, signals
+from fieldlogger import config, signals
 
 NOW = timezone.now()
 
@@ -71,10 +70,11 @@ UPDATE_FORM = {
 }
 
 
-def reload_modules():
-    reload(config)
-    reload(fieldlogger)
-    reload(signals)
+def refresh_config():
+    """Rebuild the logging configuration and reconnect the signals after
+    an in-place change to ``FIELD_LOGGER_SETTINGS``."""
+    config.invalidate_config()
+    signals.connect_signals()
 
 
 def set_config(cfg, scope):
@@ -90,7 +90,7 @@ def set_config(cfg, scope):
         else:
             raise ValueError(f"Invalid scope: {scope}")
 
-    reload_modules()
+    refresh_config()
 
 
 def set_attributes(instance, form, update_fields=False, save=True):
@@ -110,13 +110,15 @@ def bulk_set_attributes(instances, form, update_fields=False, save=True):
         set_attributes(instance, form, update_fields, save)
 
 
-def check_logs(instance, expected_count, extra_data=True, created=False):
+def check_logs(instance, expected_count, callbacks_ran=True, created=False):
     instance.refresh_from_db()
 
-    logs = instance.fieldlog_set.order_by("-pk")[:expected_count]
+    logs = instance.fieldlog_set.filter(created=created)
     assert logs.count() == expected_count
 
-    _extra_data = {"global": True, "testapp": True, "testmodel": True}
+    expected_extra_data = (
+        {"global": True, "testapp": True, "testmodel": True} if callbacks_ran else {}
+    )
 
     for log in logs:
         prev_log = log.previous_log
@@ -125,10 +127,10 @@ def check_logs(instance, expected_count, extra_data=True, created=False):
         assert log.instance_id == instance.pk
         assert log.old_value == (prev_log.new_value if prev_log else None)
         assert log.new_value == getattr(instance, log.field)
-        assert log.extra_data == (_extra_data if extra_data else {})
+        assert log.extra_data == expected_extra_data
         assert log.created == created
 
 
-def bulk_check_logs(instances, expected_count, extra_data=True, created=False):
+def bulk_check_logs(instances, expected_count, callbacks_ran=True, created=False):
     for instance in instances:
-        check_logs(instance, expected_count, extra_data, created)
+        check_logs(instance, expected_count, callbacks_ran, created)

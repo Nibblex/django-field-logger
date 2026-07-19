@@ -12,7 +12,11 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": "test_db",
-    }
+    },
+    "other": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": "test_db_other",
+    },
 }
 
 INSTALLED_APPS = [
