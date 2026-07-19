@@ -31,8 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[dev]
 
+      # -f selects every env of the matrix with this python factor;
+      # -e would create an ad-hoc env without any Django pin.
       - name: Run tox
-        run: tox -q -e py$(echo ${{ matrix.python-version }} | tr -d .)
+        run: tox -q -f py$(echo ${{ matrix.python-version }} | tr -d .)
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

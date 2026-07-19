@@ -38,8 +38,12 @@ def _is_loggable(field: Field) -> bool:
 
 def _is_loggable_m2m(field: Field) -> bool:
     """Forward many-to-many fields; their changes do not go through
-    ``save()``, so they are logged from the ``m2m_changed`` signal."""
-    return field.many_to_many and field.concrete
+    ``save()``, so they are logged from the ``m2m_changed`` signal.
+
+    An isinstance check because reverse relations (``ManyToManyRel``)
+    are not ``ManyToManyField`` instances, and ``field.concrete`` for
+    many-to-many changed from True to False in Django 6.0."""
+    return isinstance(field, models.ManyToManyField)
 
 
 def get_settings() -> dict:
