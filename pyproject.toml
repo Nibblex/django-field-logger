@@ -7,7 +7,7 @@ name = "django-field-logger"
 version = "0.2.0"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Sergio Rodríguez", email = "srodriguez3441@gmail.com"},
 ]
@@ -20,7 +20,7 @@ dependencies = [
 ]
 classifiers = [
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
     "Framework :: Django",
     "Framework :: Django :: 3.1",

@@ -12,7 +12,7 @@
    :alt: pre-commit.ci status
 .. image:: https://codecov.io/gh/Nibblex/django-field-logger/graph/badge.svg?token=H1N619SS8P
    :target: https://codecov.io/gh/Nibblex/django-field-logger
-.. image:: https://img.shields.io/pypi/l/relattrs
+.. image:: https://img.shields.io/pypi/l/django-field-logger
    :target: https://github.com/Nibblex/django-field-logger/blob/main/LICENSE
    :alt: PyPI - License
 
@@ -319,3 +319,15 @@ primary keys before and after:
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
+
+License
+~~~~~~~
+
+Copyright (C) 2024 Sergio Rodríguez
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See the `LICENSE
+<https://github.com/Nibblex/django-field-logger/blob/main/LICENSE>`_
+file for details.
