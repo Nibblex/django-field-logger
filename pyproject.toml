@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-field-logger"
-version = "0.3.0"
+version = "0.3.1"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
-license = {text = "GPL-3.0-or-later"}
+license = {text = "MIT"}
 authors = [
     {name = "Sergio Rodríguez", email = "srodriguez3441@gmail.com"},
 ]
@@ -20,7 +20,7 @@ dependencies = [
 ]
 classifiers = [
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Framework :: Django",
     "Framework :: Django :: 3.1",
@@ -46,6 +46,7 @@ classifiers = [
 [project.optional-dependencies]
 dev = [
     "build",
+    "Pillow",
     "pre-commit",
     "pytest",
     "pytest-cov",
@@ -89,6 +90,7 @@ env_list = py{314,313,312}-django{60}
 
 [testenv]
 deps =
+    Pillow
     pytest
     pytest-cov
     pytest-django
