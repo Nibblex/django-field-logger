@@ -46,6 +46,7 @@ classifiers = [
 [project.optional-dependencies]
 dev = [
     "build",
+    "Pillow",
     "pre-commit",
     "pytest",
     "pytest-cov",
@@ -89,6 +90,7 @@ env_list = py{314,313,312}-django{60}
 
 [testenv]
 deps =
+    Pillow
     pytest
     pytest-cov
     pytest-django
