@@ -1,0 +1,33 @@
+# AGENTS.md
+
+Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog` model. Library only: no `manage.py`, no project.
+
+## Environment
+
+- `.python-version` lists `3.8 … 3.13 system`; the first match (3.8) has no deps, so bare `pytest`/`tox` fail with `No module named 'django'` or a pyenv "command not found".
+- Dev tools (tox, pytest, ruff, pre-commit; Django 6.0) live in the pyenv virtualenv `fieldlogger`: use `~/.pyenv/versions/fieldlogger/bin/<tool>` or `pyenv shell fieldlogger`.
+- Existing tox envs under `.tox/` can be reused directly, e.g. `.tox/py313-django52/bin/python -m pytest -q`.
+
+## Testing
+
+- Settings: `tests.settings` (set in `pyproject.toml`); `pythonpath` includes both `.` and `fieldlogger`.
+- Single test: `python -m pytest -q tests/test_m2m.py -k clear`.
+- Coverage gate is `fail_under = 100` (migrations excluded). Every new branch needs a test; use `if TYPE_CHECKING:` (excluded) for type-only imports.
+- Matrix lives in `[tool.tox]` in `pyproject.toml`. CI runs `tox -f py313` (all Django versions for that Python); `-e py313` would run with no Django pin.
+- `testapp` (`tests/testapp/`) has no migrations; tables are synced. Two SQLite DBs (`default`, `other`) exist for multi-db tests.
+- Tests mutate `settings.FIELD_LOGGER_SETTINGS` in place: use `helpers.set_config(...)` plus the `restore_settings` fixture, or call `helpers.refresh_config()` after any manual change. `override_settings` also works (handled by `setting_changed_receiver`).
+
+## Architecture gotchas
+
+- Config is built lazily and cached (`config.py`); signals are connected in `FieldloggerConfig.ready()` only for configured models. After changing settings at runtime: `invalidate_config()` + `connect_signals()`.
+- Save-path logging: `pre_save` stashes DB state on `instance._fieldlogger_pre_instance`, `post_save` diffs it. M2M uses `m2m_changed` on the through model (`_fieldlogger_pre_m2m`). Bulk ops are logged only via `FieldLoggerManager`.
+- `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation.
+- Supports Python 3.8+ and Django 3.1–6.0: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`).
+- Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
+  `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
+  It leaves an untracked `test_db` SQLite file in the repo root (not gitignored); delete it.
+
+## Lint / workflow
+
+- `pre-commit run -a` (ruff `--fix` + ruff-format, pyupgrade, rst checks for `README.rst`). The `no-commit-to-branch` hook blocks commits on `main`.
+- Release: bump `version` in `pyproject.toml`, publish a GitHub release tagged `v<version>`; `publish.yml` fails if tag and version differ (PyPI trusted publishing).
