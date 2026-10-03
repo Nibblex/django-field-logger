@@ -73,6 +73,5 @@ if django.VERSION >= (5, 0):
             expression=models.F("test_integer_field") + 1,
             output_field=models.IntegerField(),
             db_persist=True,
-            null=True,
         ),
     )

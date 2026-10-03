@@ -95,8 +95,10 @@ class FieldLog(models.Model):
         return field.to_python(value)
 
     @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
+    def from_db(cls, db, field_names, values, **kwargs):
+        # **kwargs forwards ``fetch_mode`` (Django >= 6.1) without breaking
+        # older versions, where it is never passed.
+        instance = super().from_db(db, field_names, values, **kwargs)
         if _CONVERSION_FIELDS.issubset(field_names):
             instance._convert_db_values()
         return instance
