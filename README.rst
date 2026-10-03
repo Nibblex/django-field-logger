@@ -305,17 +305,33 @@ Many-to-many fields
 Many-to-many changes do not go through ``save()``, so they are logged
 from the ``m2m_changed`` signal instead. Any loggable many-to-many
 field gets one log per change, holding the sorted lists of related
-primary keys before and after:
+primary keys before and after. Given a ``cars`` field on ``Driver``
+with ``'fields': ['cars']`` in its configuration:
 
 .. code:: python
+
+    class Driver(FieldLoggerMixin, models.Model):
+        cars = models.ManyToManyField(Car)
 
     driver.cars.add(car1, car2)
     log = driver.fieldlog_set.get(field='cars')
     print(log.old_value, log.new_value)  # prints: [] [1, 2]
 
+Changes made from the reverse side of the relation (the
+``car.driver_set`` accessor) are logged too, but always on the model
+that declares the field (``Driver`` here); ``Car`` gets no logs. Every
+driver affected by the change gets its own log:
+
+.. code:: python
+
+    car3.driver_set.add(driver, other_driver)
+    log = driver.fieldlog_set.filter(field='cars').last()
+    print(log.old_value, log.new_value)  # prints: [1, 2] [1, 2, 3]
+
+    car3.driver_set.clear()  # logs [1, 2, 3] -> [1, 2] on driver and [3] -> [] on other_driver
+
 -  ``add``, ``remove``, ``set`` and ``clear`` are logged, from both
-   sides of the relation (``car.drivers.add(driver)`` also logs the
-   change on ``driver``).
+   sides of the relation.
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
