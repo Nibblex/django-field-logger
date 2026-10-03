@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-field-logger"
-version = "0.3.1"
+version = "0.4.0"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
 license = {text = "MIT"}
@@ -32,6 +32,7 @@ classifiers = [
     "Framework :: Django :: 5.1",
     "Framework :: Django :: 5.2",
     "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -81,7 +82,7 @@ exclude_also = ["if TYPE_CHECKING:"]
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-env_list = py{314,313,312}-django{60}
+env_list = py{314,313,312}-django{61,60}
            py{314,313,312,311,310}-django{52,51,50}
            py{313,312,311,310,39,38}-django{42,41}
            py{312,311,310,39,38}-django{40}
@@ -94,6 +95,7 @@ deps =
     pytest
     pytest-cov
     pytest-django
+    django61: Django>=6.1,<6.2
     django60: Django>=6.0,<6.1
     django52: Django>=5.2,<5.3
     django51: Django>=5.1,<5.2
