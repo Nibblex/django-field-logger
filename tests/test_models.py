@@ -47,6 +47,23 @@ class TestFieldLog:
         assert log.new_value == "new"
         assert log.old_value == (None if created else "old")
 
+    def test_from_db_on_reverse_relation(self):
+        """Reverse relations are never logged; a log naming one is left as
+        decoded JSON instead of being converted."""
+        log = FieldLog.objects.create(
+            app_label="testapp",
+            model_name="testmodelrelated",
+            instance_id="1",
+            # Reverse side of TestModel.test_related_field.
+            field="testmodel",
+            old_value=[1],
+            new_value=[1, 2],
+        )
+
+        log = FieldLog.objects.get(pk=log.pk)
+        assert log.old_value == [1]
+        assert log.new_value == [1, 2]
+
     def test_from_db_on_related_field_path(self, test_instance):
         related_instance = TestModelRelated.objects.create(test_char_field="related")
 

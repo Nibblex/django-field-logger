@@ -2,10 +2,10 @@
 
 from base64 import b64decode
 from functools import cached_property
-from typing import Any, Callable, Dict, FrozenSet, Optional, Type
+from typing import Any, Callable, Collection, Dict, FrozenSet, Optional, Type, cast
 
 from django.apps import apps
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db import models
 from django.utils.functional import SimpleLazyObject
 from django.utils.translation import gettext_lazy as _
@@ -34,10 +34,12 @@ def _fetch_related(field: models.ForeignKey, pk: Any) -> models.Model:
     If the instance no longer exists, return an unsaved shell instance
     carrying only the primary key, so reading old logs never fails.
     """
+    # Always a model class once the app registry is ready.
+    related_model = cast(Type[models.Model], field.related_model)
     try:
-        return field.related_model._base_manager.get(pk=pk)
-    except field.related_model.DoesNotExist:
-        return field.related_model(pk=pk)
+        return related_model._base_manager.get(pk=pk)
+    except ObjectDoesNotExist:
+        return related_model(pk=pk)
 
 
 class FieldLog(models.Model):
@@ -65,7 +67,7 @@ class FieldLog(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"({self.app_label}__{self.model_name}__{self.field}, "
             f"created={self.created}) {self.old_value} -> {self.new_value}"
@@ -95,7 +97,13 @@ class FieldLog(models.Model):
         return field.to_python(value)
 
     @classmethod
-    def from_db(cls, db, field_names, values, **kwargs):
+    def from_db(
+        cls,
+        db: Optional[str],
+        field_names: Collection[str],
+        values: Collection[Any],
+        **kwargs: Any,
+    ) -> "FieldLog":
         # **kwargs forwards ``fetch_mode`` (Django >= 6.1) without breaking
         # older versions, where it is never passed.
         instance = super().from_db(db, field_names, values, **kwargs)
@@ -129,6 +137,10 @@ class FieldLog(models.Model):
         try:
             field = model_class._meta.get_field(field_name)
         except FieldDoesNotExist:
+            return
+
+        if not isinstance(field, models.Field):
+            # A reverse relation; those are never logged.
             return
 
         if not self.created:

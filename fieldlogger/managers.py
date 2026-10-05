@@ -1,13 +1,17 @@
 """Manager that adds field logging to bulk operations."""
 
+from typing import Any, Iterable, List, Optional, Sequence, TypeVar
+
 from django.db import models
 
 from .config import get_config
-from .fieldlogger import db_supports_returning_pks, set_primary_keys
+from .fieldlogger import PRE_INSTANCE_ATTR, db_supports_returning_pks, set_primary_keys
 from .fieldlogger import log_fields as _log_fields
 
+_M = TypeVar("_M", bound=models.Model)
 
-class FieldLoggerManager(models.Manager):
+
+class FieldLoggerManager(models.Manager[_M]):
     """Logs field changes on ``bulk_create`` and ``bulk_update``.
 
     Both methods accept two extra keyword arguments: ``log_fields`` to
@@ -15,9 +19,13 @@ class FieldLoggerManager(models.Manager):
     configured callbacks.
     """
 
-    def bulk_create(
-        self, objs, log_fields: bool = True, run_callbacks: bool = True, **kwargs
-    ):
+    def bulk_create(  # type: ignore[override]
+        self,
+        objs: Iterable[_M],
+        log_fields: bool = True,
+        run_callbacks: bool = True,
+        **kwargs: Any,
+    ) -> List[_M]:
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
 
@@ -47,14 +55,16 @@ class FieldLoggerManager(models.Manager):
 
         return res
 
-    def bulk_update(
+    def bulk_update(  # type: ignore[override]
         self,
-        objs,
-        fields,
+        objs: Iterable[_M],
+        fields: Sequence[str],
         log_fields: bool = True,
         run_callbacks: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> Optional[int]:
+        # Returns the number of updated rows; None on Django < 4.0.
+
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
 
@@ -72,7 +82,7 @@ class FieldLoggerManager(models.Manager):
         res = super().bulk_update(objs, fields, **kwargs)
 
         for obj in objs:
-            obj._fieldlogger_pre_instance = pre_instances.get(obj.pk)
+            setattr(obj, PRE_INSTANCE_ATTR, pre_instances.get(obj.pk))
 
         try:
             _log_fields(
@@ -80,6 +90,6 @@ class FieldLoggerManager(models.Manager):
             )
         finally:
             for obj in objs:
-                del obj._fieldlogger_pre_instance
+                delattr(obj, PRE_INSTANCE_ATTR)
 
         return res
