@@ -12,7 +12,7 @@ from .testapp.models import TestModel
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.usefixtures("restore_settings")
 class TestConfig:
-    def test_fields_list(self):
+    def test_only_listed_fields_are_logged(self):
         """Only the listed fields are logged; unknown names are ignored."""
         set_config({"fields": ["test_char_field", "nonexistent_field"]}, "testmodel")
 
@@ -20,7 +20,7 @@ class TestConfig:
         check_logs(instance, expected_count=1, created=True)
         assert instance.fieldlog_set.get().field == "test_char_field"
 
-    def test_unknown_model_is_skipped(self):
+    def test_unknown_model_in_settings_is_skipped(self):
         settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["testapp"]["models"][
             "NoSuchModel"
         ] = {"fields": "__all__"}
@@ -28,7 +28,7 @@ class TestConfig:
 
         assert set(config.get_config()) == {TestModel}
 
-    def test_logging_fields_are_concrete(self):
+    def test_reverse_and_m2m_fields_are_not_save_logged(self):
         """Reverse relations and many-to-many fields returned by
         get_fields() have no column, so they are not logged."""
         logging_fields = config.get_config()[TestModel]["logging_fields"]
@@ -54,7 +54,7 @@ class TestConfig:
         assert not instance.fieldlog_set.filter(field="test_generated_field").exists()
         assert instance.fieldlog_set.filter(field="test_integer_field").count() == 2
 
-    def test_falsy_configs_are_skipped(self):
+    def test_empty_app_or_model_settings_are_skipped(self):
         settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["emptyapp"] = None
         settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["testapp"]["models"][
             "TestModelRelated"
