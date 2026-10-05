@@ -322,6 +322,8 @@ With ``bulk_create(update_conflicts=True)``, objects that update an
 existing row are logged as changes of the ``update_fields`` instead of
 as creations.
 
+``QuerySet.update()`` does not fire signals and is not logged.
+
 Many-to-many fields
 ~~~~~~~~~~~~~~~~~~~
 
