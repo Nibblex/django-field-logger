@@ -95,3 +95,27 @@ class SoftDeleteModel(models.Model):
     deleted = models.BooleanField(default=False)
 
     items = SoftDeleteManager()
+
+
+class ActiveQuerySet(models.QuerySet):
+    """A user's own QuerySet, unaware of field logging."""
+
+    def active(self):
+        return self.filter(deleted=False)
+
+
+class ActiveQuerySetManager(FieldLoggerManager):
+    """Subclass that returns its own QuerySet from get_queryset()."""
+
+    def get_queryset(self):
+        return ActiveQuerySet(self.model, using=self._db)
+
+
+class CustomQuerySetModel(models.Model):
+    """Combines FieldLoggerManager with a custom QuerySet in both ways."""
+
+    name = models.CharField(max_length=32, null=True)
+    deleted = models.BooleanField(default=False)
+
+    objects = FieldLoggerManager.from_queryset(ActiveQuerySet)()
+    overridden = ActiveQuerySetManager()

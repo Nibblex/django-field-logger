@@ -1,4 +1,5 @@
 import pytest
+from asgiref.sync import async_to_sync
 
 from .helpers import CREATE_FORM, bulk_check_logs
 from .testapp.models import SoftDeleteModel, TestModel
@@ -144,3 +145,70 @@ class TestIgnoreConflictsPrimaryKeys:
 
         assert conflicting.pk is not None
         assert created.pk > conflicting.pk
+
+
+def char_logs(instance, created):
+    return instance.fieldlog_set.filter(field="test_char_field", created=created)
+
+
+@pytest.mark.django_db(transaction=True, databases=["default", "other"])
+@pytest.mark.parametrize(
+    "queryset",
+    [
+        lambda: TestModel.objects.all(),
+        lambda: TestModel.objects.filter(pk__gt=0),
+        lambda: TestModel.objects.using("other"),
+    ],
+    ids=["all", "filter", "using"],
+)
+class TestBulkOperationsOnQuerysets:
+    """Logging must not depend on calling the bulk methods on the manager
+    itself: chained calls return a QuerySet."""
+
+    def test_bulk_create_is_logged(self, queryset):
+        (instance,) = queryset().bulk_create([TestModel(test_char_field="new")])
+
+        assert char_logs(instance, created=True).get().new_value == "new"
+
+    def test_bulk_update_is_logged(self, queryset):
+        (instance,) = queryset().bulk_create([TestModel(test_char_field="old")])
+        instance.test_char_field = "new"
+
+        queryset().bulk_update([instance], ["test_char_field"])
+
+        log = char_logs(instance, created=False).get()
+        assert (log.old_value, log.new_value) == ("old", "new")
+
+
+@pytest.mark.django_db(transaction=True)
+class TestAsyncBulkOperations:
+    # Called on a QuerySet: the manager only exposes the async methods on
+    # Django >= 4.1, the QuerySet on every version.
+
+    def test_abulk_create_is_logged(self):
+        (instance,) = async_to_sync(TestModel.objects.all().abulk_create)(
+            [TestModel(test_char_field="new")]
+        )
+
+        assert char_logs(instance, created=True).count() == 1
+
+    def test_abulk_update_is_logged(self):
+        instance = TestModel.objects.create(test_char_field="old")
+        instance.test_char_field = "new"
+
+        async_to_sync(TestModel.objects.all().abulk_update)(
+            [instance], ["test_char_field"]
+        )
+
+        assert char_logs(instance, created=False).count() == 1
+
+    def test_async_methods_accept_log_fields(self):
+        (instance,) = async_to_sync(TestModel.objects.all().abulk_create)(
+            [TestModel(test_char_field="old")], log_fields=False
+        )
+        instance.test_char_field = "new"
+        async_to_sync(TestModel.objects.all().abulk_update)(
+            [instance], ["test_char_field"], log_fields=False
+        )
+
+        assert not instance.fieldlog_set.exists()

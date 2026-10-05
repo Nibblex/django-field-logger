@@ -1,7 +1,9 @@
-"""Manager that adds field logging to bulk operations."""
+"""QuerySet and manager that add field logging to bulk operations."""
 
-from typing import Any, Iterable, List, Optional, Sequence, TypeVar
+import functools
+from typing import Any, Callable, Iterable, List, Optional, Sequence, Type, TypeVar
 
+from asgiref.sync import sync_to_async
 from django.db import models
 
 from .config import get_config
@@ -12,12 +14,14 @@ from .fieldlogger import log_fields as _log_fields
 _M = TypeVar("_M", bound=models.Model)
 
 
-class FieldLoggerManager(models.Manager[_M]):
-    """Logs field changes on ``bulk_create`` and ``bulk_update``.
+class FieldLoggerQuerySet(models.QuerySet[_M]):
+    """Logs field changes on ``bulk_create`` and ``bulk_update``, and on
+    their async variants.
 
-    Both methods accept two extra keyword arguments: ``log_fields`` to
+    All of them accept two extra keyword arguments: ``log_fields`` to
     disable logging for the call, and ``run_callbacks`` to skip the
-    configured callbacks.
+    configured callbacks. Being a QuerySet, logging also applies after
+    ``using()``, ``filter()`` and other chained calls.
     """
 
     def bulk_create(  # type: ignore[override]
@@ -29,6 +33,8 @@ class FieldLoggerManager(models.Manager[_M]):
     ) -> List[_M]:
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
+        # Resolve self.db to the write database, as Django does.
+        self._for_write = True
 
         ignore_conflicts = kwargs.get("ignore_conflicts", False)
 
@@ -85,6 +91,8 @@ class FieldLoggerManager(models.Manager[_M]):
 
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
+        # Resolve self.db to the write database, as Django does.
+        self._for_write = True
 
         logging_config = get_config().get(self.model)
         if not log_fields or logging_config is None:
@@ -115,3 +123,93 @@ class FieldLoggerManager(models.Manager[_M]):
                 delattr(obj, PRE_INSTANCE_ATTR)
 
         return res
+
+    # Django's async variants (4.1+) already call bulk_create/bulk_update,
+    # so they are logged; these overrides only add the extra arguments,
+    # which Django's signatures do not accept.
+
+    async def abulk_create(  # type: ignore[override]
+        self,
+        objs: Iterable[_M],
+        log_fields: bool = True,
+        run_callbacks: bool = True,
+        **kwargs: Any,
+    ) -> List[_M]:
+        return await sync_to_async(self.bulk_create)(
+            objs, log_fields=log_fields, run_callbacks=run_callbacks, **kwargs
+        )
+
+    async def abulk_update(  # type: ignore[override]
+        self,
+        objs: Iterable[_M],
+        fields: Sequence[str],
+        log_fields: bool = True,
+        run_callbacks: bool = True,
+        **kwargs: Any,
+    ) -> Optional[int]:
+        return await sync_to_async(self.bulk_update)(
+            objs,
+            fields,
+            log_fields=log_fields,
+            run_callbacks=run_callbacks,
+            **kwargs,
+        )
+
+
+def _with_logging(queryset_class: Type[models.QuerySet]) -> Type[models.QuerySet]:
+    """``queryset_class`` combined with ``FieldLoggerQuerySet``, unless it
+    already is one."""
+    if issubclass(queryset_class, FieldLoggerQuerySet):
+        return queryset_class
+    return type(
+        queryset_class.__name__,
+        (FieldLoggerQuerySet, queryset_class),
+        {"__module__": queryset_class.__module__},
+    )
+
+
+class FieldLoggerManager(models.Manager[_M]):
+    """Manager whose querysets are ``FieldLoggerQuerySet``s, so bulk
+    operations are logged whether called on the manager or on a queryset
+    (e.g. ``Model.objects.using("other").bulk_create(...)``).
+
+    Custom querysets are combined with ``FieldLoggerQuerySet``, both with
+    ``FieldLoggerManager.from_queryset(MyQuerySet)`` and when a subclass
+    overrides ``get_queryset()``.
+    """
+
+    _queryset_class = FieldLoggerQuerySet
+
+    @classmethod
+    def from_queryset(
+        cls, queryset_class: Type[models.QuerySet], class_name: Optional[str] = None
+    ) -> Any:
+        return super().from_queryset(_with_logging(queryset_class), class_name)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A subclass overriding get_queryset() may return another QuerySet;
+        # wrap it so its result always has the logging methods.
+        get_queryset = cls.__dict__.get("get_queryset")
+        if get_queryset is not None and not getattr(
+            get_queryset, "_fieldlogger_wrapped", False
+        ):
+            cls.get_queryset = _logging_get_queryset(get_queryset)  # type: ignore[method-assign]
+
+
+def _logging_get_queryset(get_queryset: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a manager's ``get_queryset`` so the QuerySet it returns has the
+    logging methods of ``FieldLoggerQuerySet``."""
+
+    @functools.wraps(get_queryset)
+    def wrapper(self: models.Manager, *args: Any, **kwargs: Any) -> Any:
+        queryset = get_queryset(self, *args, **kwargs)
+        if not isinstance(queryset, FieldLoggerQuerySet):
+            # A copy, so the class change does not leak to a shared
+            # instance; the copy keeps its state (filters, database).
+            queryset = queryset.all()
+            queryset.__class__ = _with_logging(type(queryset))
+        return queryset
+
+    wrapper._fieldlogger_wrapped = True  # type: ignore[attr-defined]
+    return wrapper
