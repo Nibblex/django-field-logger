@@ -6,58 +6,59 @@ a per-model logging configuration, resolving the ``logging_enabled``,
 scopes.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Tuple, Type
+from typing import Any, Dict, FrozenSet, List, Tuple, Type, TypedDict, cast
 
 from django.apps import apps
-from django.conf import settings
 from django.db import models
 from django.db.models import Model
 from django.db.models.fields import Field
 from django.utils.module_loading import import_string
 
-if TYPE_CHECKING:
-    from .models import Callback
-
-ModelConfig = Dict[str, Any]
+from .app_settings import get_settings
+from .models import Callback
 
 # Django >= 5.0 only; None on older versions.
 GENERATED_FIELD = getattr(models, "GeneratedField", None)
 
 
+class ModelConfig(TypedDict):
+    """Resolved logging configuration of a single model."""
+
+    logging_fields: FrozenSet[Field]
+    logging_m2m_fields: FrozenSet[models.ManyToManyField]
+    callbacks: List[Callback]
+    fail_silently: bool
+
+
+# Through model -> (model declaring the field, many-to-many field).
+M2MConfig = Dict[Type[Model], Tuple[Type[Model], models.ManyToManyField]]
+
+
+def through_model(field: models.ManyToManyField) -> Type[Model]:
+    """Return the through model of ``field``; always resolved once the
+    app registry is ready (``None`` or a string only in the stubs)."""
+    return cast(Type[Model], field.remote_field.through)
+
+
 def _is_loggable(field: Field) -> bool:
-    """Whether a field can be logged on save: concrete (excludes reverse
-    relations), with its own column (excludes many-to-many, which despite
+    """Whether a field can be logged on save: concrete (excludes private
+    fields), with its own column (excludes many-to-many, which despite
     being "concrete" only has a through table) and not computed by the
     database (``GeneratedField`` values may be stale in memory)."""
-    return (
+    return bool(
         field.concrete
         and not field.many_to_many
         and not (GENERATED_FIELD and isinstance(field, GENERATED_FIELD))
     )
 
 
-def _is_loggable_m2m(field: Field) -> bool:
-    """Forward many-to-many fields; their changes do not go through
-    ``save()``, so they are logged from the ``m2m_changed`` signal.
-
-    An isinstance check because reverse relations (``ManyToManyRel``)
-    are not ``ManyToManyField`` instances, and ``field.concrete`` for
-    many-to-many changed from True to False in Django 6.0."""
-    return isinstance(field, models.ManyToManyField)
-
-
-def get_settings() -> dict:
-    """Return the ``FIELD_LOGGER_SETTINGS`` dict from the Django settings."""
-    return getattr(settings, "FIELD_LOGGER_SETTINGS", {})
-
-
 class LoggingConfig:
     """Lazily builds and caches the per-model logging configuration."""
 
-    def __init__(self):
-        self._settings: dict = {}
+    def __init__(self) -> None:
+        self._settings: Dict[str, Any] = {}
         self._config: Dict[Type[Model], ModelConfig] = {}
-        self._m2m_config: Dict[Type[Model], Tuple[Type[Model], Field]] = {}
+        self._m2m_config: M2MConfig = {}
         self._loaded = False
 
     def _all_scopes(self, key: str, *configs: dict) -> bool:
@@ -73,7 +74,7 @@ class LoggingConfig:
     def _fail_silently(self, *configs: dict) -> bool:
         return self._all_scopes("fail_silently", *configs)
 
-    def _callbacks(self, *configs: dict) -> List["Callback"]:
+    def _callbacks(self, *configs: dict) -> List[Callback]:
         """Concatenate the callbacks of all scopes, importing dotted paths."""
         callbacks = list(self._settings.get("CALLBACKS", []))
         for config in configs:
@@ -85,30 +86,32 @@ class LoggingConfig:
         ]
 
     def _logging_fields(
-        self, model_class: Type[Model], model_config: ModelConfig
-    ) -> Tuple[FrozenSet[Field], FrozenSet[Field]]:
+        self, model_class: Type[Model], model_settings: Dict[str, Any]
+    ) -> Tuple[FrozenSet[Field], FrozenSet[models.ManyToManyField]]:
         """Resolve the ``fields``/``exclude_fields`` options to two sets of
         Field objects: regular fields and many-to-many fields."""
-        fields = model_config.get("fields", [])
-        exclude_fields = set(model_config.get("exclude_fields", []))
-        model_fields = [
-            field
-            for field in model_class._meta.get_fields()
-            if _is_loggable(field) or _is_loggable_m2m(field)
-        ]
+        fields = model_settings.get("fields", [])
+        exclude_fields = set(model_settings.get("exclude_fields", []))
 
-        if fields == "__all__":
-            selected = [
-                field for field in model_fields if field.name not in exclude_fields
-            ]
-        else:
-            include_fields = set(fields) - exclude_fields
-            selected = [field for field in model_fields if field.name in include_fields]
+        logging_fields = set()
+        logging_m2m_fields = set()
+        for field in model_class._meta.get_fields():
+            # Reverse relations (``ForeignObjectRel``) are not ``Field``s.
+            if not isinstance(field, Field) or field.name in exclude_fields:
+                continue
+            if fields != "__all__" and field.name not in fields:
+                continue
 
-        return (
-            frozenset(field for field in selected if not field.many_to_many),
-            frozenset(field for field in selected if field.many_to_many),
-        )
+            # Forward many-to-many changes do not go through ``save()``, so
+            # they are logged from the ``m2m_changed`` signal. An isinstance
+            # check because ``field.concrete`` for many-to-many changed from
+            # True to False in Django 6.0.
+            if isinstance(field, models.ManyToManyField):
+                logging_m2m_fields.add(field)
+            elif _is_loggable(field):
+                logging_fields.add(field)
+
+        return frozenset(logging_fields), frozenset(logging_m2m_fields)
 
     def _build(self) -> None:
         self._settings = get_settings()
@@ -140,7 +143,7 @@ class LoggingConfig:
                 }
 
                 for field in logging_m2m_fields:
-                    self._m2m_config[field.remote_field.through] = (
+                    self._m2m_config[through_model(field)] = (
                         model_class,
                         field,
                     )
@@ -153,7 +156,7 @@ class LoggingConfig:
 
         return self._config
 
-    def get_m2m_config(self) -> Dict[Type[Model], Tuple[Type[Model], Field]]:
+    def get_m2m_config(self) -> M2MConfig:
         """Map of through models to their (model, many-to-many field) pair,
         built together with the per-model configuration."""
         self.get_config()

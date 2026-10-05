@@ -1,19 +1,24 @@
 """Core logging logic: detect field changes and create ``FieldLog`` records."""
 
 import logging
-from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type
+from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
 
 from django.db import connections, router, transaction
-from django.db.models import Max, Model
+from django.db.models import ManyToManyField, Max, Model
 from django.db.models.fields import DecimalField, Field
 
-from .config import get_config
+from .config import get_config, through_model
 from .models import Callback, FieldLog
 
 # Logs created in a single operation, keyed by instance pk and field name.
 Logs = Dict[Any, Dict[str, FieldLog]]
 
 logger = logging.getLogger(__name__)
+
+# Attributes where the pre-change state of an instance is stashed between
+# the "pre" and "post" signals (or around a bulk update).
+PRE_INSTANCE_ATTR = "_fieldlogger_pre_instance"
+PRE_M2M_ATTR = "_fieldlogger_pre_m2m"
 
 
 def db_supports_returning_pks(
@@ -44,7 +49,8 @@ def set_primary_keys(
     using = using or router.db_for_write(model_class)
     with transaction.atomic(using=using):
         next_pk = (
-            model_class.objects.using(using).aggregate(max_pk=Max("pk"))["max_pk"] or 0
+            model_class._base_manager.using(using).aggregate(max_pk=Max("pk"))["max_pk"]
+            or 0
         )
         for obj in objs:
             if obj.pk is None:
@@ -56,14 +62,14 @@ def _log_fields(instances: Iterable[Model], logging_fields: FrozenSet[Field]) ->
     """Create a ``FieldLog`` for every changed field of every instance.
 
     The previous state of each instance is read from its
-    ``_fieldlogger_pre_instance`` attribute; instances without it are
+    ``PRE_INSTANCE_ATTR`` attribute; instances without it are
     considered newly created.
     """
     logs: Logs = {}
     field_logs_to_create = []
 
     for instance in instances:
-        pre_instance = getattr(instance, "_fieldlogger_pre_instance", None)
+        pre_instance = getattr(instance, PRE_INSTANCE_ATTR, None)
 
         for field in logging_fields:
             try:
@@ -82,7 +88,8 @@ def _log_fields(instances: Iterable[Model], logging_fields: FrozenSet[Field]) ->
 
             field_log = FieldLog(
                 app_label=instance._meta.app_label,
-                model_name=instance._meta.model_name,
+                # Always set on concrete models; Optional only in the stubs.
+                model_name=cast(str, instance._meta.model_name),
                 instance_id=instance.pk,
                 field=field.name,
                 old_value=old_value,
@@ -160,11 +167,11 @@ def log_fields(
 
 
 def m2m_pks(
-    field: Field, instance_pks: Iterable[Any], using: Optional[str] = None
+    field: ManyToManyField, instance_pks: Iterable[Any], using: Optional[str] = None
 ) -> Dict[Any, Set[Any]]:
     """Return the pks currently related through ``field`` for each pk in
     ``instance_pks``, read from the through table."""
-    through = field.remote_field.through
+    through = through_model(field)
     source = field.m2m_field_name()
     target = field.m2m_reverse_field_name()
 
@@ -182,7 +189,7 @@ def m2m_pks(
 
 def log_m2m_fields(
     model_class: Type[Model],
-    field: Field,
+    field: ManyToManyField,
     old_state: Dict[Any, Set[Any]],
     using: Optional[str] = None,
     run_callbacks: bool = True,
@@ -208,7 +215,7 @@ def log_m2m_fields(
 
         field_log = FieldLog(
             app_label=model_class._meta.app_label,
-            model_name=model_class._meta.model_name,
+            model_name=cast(str, model_class._meta.model_name),
             instance_id=instance_pk,
             field=field.name,
             old_value=sorted(old_pks),

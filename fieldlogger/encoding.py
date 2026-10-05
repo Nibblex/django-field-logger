@@ -10,19 +10,20 @@ from base64 import b64encode
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from json import JSONDecoder, JSONEncoder
+from typing import Any
 from uuid import UUID
 
 from django.core.files import File
 from django.db import models
 from django.utils.module_loading import import_string
 
-from .config import get_settings
+from .app_settings import get_settings
 
 
 class Encoder(JSONEncoder):
     """JSON encoder for the value types of the standard Django fields."""
 
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, (date, datetime, time)):
             return obj.isoformat()
         if isinstance(obj, timedelta):
