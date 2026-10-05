@@ -20,21 +20,21 @@ class CustomDecoder(JSONDecoder):
 
 class TestEncoder:
     @pytest.mark.django_db
-    def test_queryset(self):
+    def test_queryset_encodes_as_pk_list(self):
         related_instance = TestModelRelated.objects.create()
         encoded = encoding.Encoder().default(TestModelRelated.objects.all())
         assert encoded == [related_instance.pk]
 
-    def test_unsupported_type(self):
+    def test_unsupported_type_raises_type_error(self):
         with pytest.raises(TypeError):
             encoding.Encoder().default(object())
 
-    def test_non_utf8_bytes(self):
+    def test_bytes_encode_as_base64(self):
         raw = b"\xff\x00\xfe"
         assert encoding.Encoder().default(raw) == b64encode(raw).decode("ascii")
 
 
-def test_custom_encoder_decoder_settings():
+def test_encoder_and_decoder_are_configurable():
     settings.FIELD_LOGGER_SETTINGS["ENCODER"] = "tests.test_encoding.CustomEncoder"
     settings.FIELD_LOGGER_SETTINGS["DECODER"] = "tests.test_encoding.CustomDecoder"
 

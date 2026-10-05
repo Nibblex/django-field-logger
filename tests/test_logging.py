@@ -29,19 +29,23 @@ def test_instance():
 
 
 @pytest.mark.django_db(transaction=True)
-class TestCase1:
-    def test_log_on_create(self, test_instance):
+class TestSaveLogging:
+    def test_create_logs_every_field_as_created(self, test_instance):
         check_logs(test_instance, CREATE_LOG_COUNT, created=True)
         check_logs(test_instance, 0)
 
     @pytest.mark.parametrize("update_fields", [False, True])
-    def test_log_on_save(self, test_instance, update_form, update_fields):
+    def test_save_logs_each_changed_field(
+        self, test_instance, update_form, update_fields
+    ):
         set_attributes(test_instance, update_form, update_fields)
 
         check_logs(test_instance, UPDATE_LOG_COUNT)
 
     @pytest.mark.parametrize("update_fields", [False, True])
-    def test_log_on_save_twice(self, test_instance, update_form, update_fields):
+    def test_saving_same_values_again_logs_nothing(
+        self, test_instance, update_form, update_fields
+    ):
         set_attributes(test_instance, update_form, update_fields)
         set_attributes(test_instance, update_form, update_fields)
 
@@ -51,13 +55,13 @@ class TestCase1:
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.usefixtures("restore_settings")
 @pytest.mark.parametrize("scope", ["global", "testapp", "testmodel"])
-class TestCase2:
-    def test_logging_disabled(self, scope):
+class TestScopedSettings:
+    def test_logging_enabled_false_disables_logs(self, scope):
         set_config({"logging_enabled": False}, scope)
         test_instance = TestModel.objects.create(**CREATE_FORM)
         check_logs(test_instance, expected_count=0, created=True)
 
-    def test_fail_silently(self, scope):
+    def test_callback_errors_propagate_when_fail_silently_is_false(self, scope):
         set_config({"fail_silently": False, "callbacks": [lambda *args: 1 / 0]}, scope)
         with pytest.raises(ZeroDivisionError):
             TestModel.objects.create(**CREATE_FORM)
@@ -92,13 +96,15 @@ def bulk_update(instances, update_form, log_fields, run_callbacks):
 @pytest.mark.parametrize("log_fields", [True, False])
 @pytest.mark.parametrize("run_callbacks", [True, False])
 @pytest.mark.parametrize("ignore_conflicts", [False, True])
-class TestCase3:
-    def test_log_on_bulk_create(self, test_instances, log_fields, run_callbacks):
+class TestBulkLogging:
+    def test_bulk_create_logs_every_field_as_created(
+        self, test_instances, log_fields, run_callbacks
+    ):
         expected_count = CREATE_LOG_COUNT if log_fields else 0
         bulk_check_logs(test_instances, expected_count, run_callbacks, created=True)
         bulk_check_logs(test_instances, 0, run_callbacks)
 
-    def test_log_on_bulk_update(
+    def test_bulk_update_logs_each_changed_field(
         self, test_instances, update_form, log_fields, run_callbacks
     ):
         bulk_update(test_instances, update_form, log_fields, run_callbacks)
@@ -106,7 +112,7 @@ class TestCase3:
         expected_count = UPDATE_LOG_COUNT if log_fields else 0
         bulk_check_logs(test_instances, expected_count, run_callbacks)
 
-    def test_log_on_bulk_update_twice(
+    def test_bulk_updating_same_values_again_logs_nothing(
         self, test_instances, update_form, log_fields, run_callbacks
     ):
         bulk_update(test_instances, update_form, log_fields, run_callbacks)

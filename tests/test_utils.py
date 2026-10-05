@@ -8,7 +8,7 @@ from .testapp.models import TestModel, TestModelRelated2
 @pytest.mark.parametrize(
     "field", [field for field in TestModel._meta.fields if field.name != "id"]
 )
-class TestUtilsOnDirectFields:
+class TestRelatedModelOfDirectFields:
     def test_getrmodel(self, field):
         assert getrmodel(TestModel, field.name) == field.related_model
 
@@ -41,7 +41,7 @@ class TestUtilsOnDirectFields:
         ),
     ],
 )
-class TestUtilsOnRelatedFields:
+class TestRelatedModelOfFieldPaths:
     def test_getrmodel(self, sep, related_field):
         rattr, expected_cls = related_field
         assert getrmodel(TestModel, sep.join(rattr)) == expected_cls
@@ -69,7 +69,7 @@ class TestUtilsOnRelatedFields:
         ["test_related_field", "test_related_field2", "non_existent_field"],
     ],
 )
-class TestUtilsOnNonExistentFields:
+class TestRelatedModelOfUnknownFields:
     def test_getrmodel(self, sep, related_field):
         assert getrmodel(TestModel, sep.join(related_field)) is None
 
