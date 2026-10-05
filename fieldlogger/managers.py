@@ -1,10 +1,27 @@
 """QuerySet and manager that add field logging to bulk operations."""
 
 import functools
-from typing import Any, Callable, Iterable, List, Optional, Sequence, Type, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    FrozenSet,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    cast,
+)
 
+import django
 from asgiref.sync import sync_to_async
 from django.db import models
+from django.db.models import Q
+from django.db.models.fields import Field
 
 from .config import get_config
 from .db import batches, db_supports_returning_pks, reset_sequences, set_primary_keys
@@ -12,6 +29,124 @@ from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
 
 _M = TypeVar("_M", bound=models.Model)
+
+
+def _unique_field(model: Type[models.Model], name: str) -> Field:
+    """Resolve a ``unique_fields`` entry, which may be ``"pk"``."""
+    # Django only accepts concrete fields there, never reverse relations.
+    return model._meta.pk if name == "pk" else cast(Field, model._meta.get_field(name))
+
+
+# SQLite rejects expressions nested deeper than 1000 levels (its default
+# SQLITE_MAX_EXPR_DEPTH), and a chain of ORs nests one level per term.
+MAX_OR_TERMS = 500
+
+
+def _key(obj: models.Model, group: Tuple[Field, ...]) -> Tuple[Any, ...]:
+    return tuple(getattr(obj, field.attname) for field in group)
+
+
+def _match_condition(group: Tuple[Field, ...], keys: Collection[Tuple[Any, ...]]) -> Q:
+    """Condition matching rows whose ``group`` values equal any of ``keys``:
+    an ``IN`` list for a single field, an OR of ANDs otherwise."""
+    if len(group) == 1:
+        return Q(**{f"{group[0].attname}__in": [key[0] for key in keys]})
+
+    condition = Q()
+    for key in keys:
+        condition |= Q(**{field.attname: value for field, value in zip(group, key)})
+    return condition
+
+
+def existing_rows(
+    model: Type[_M],
+    objs: Sequence[_M],
+    unique_fields: Optional[Collection[str]],
+    logging_fields: FrozenSet[Field],
+    using: Optional[str],
+) -> Dict[int, _M]:
+    """Return the database rows that ``objs`` conflict with, keyed by the
+    index of the object in ``objs``.
+
+    These are the rows that ``bulk_create(update_conflicts=True)`` updates
+    instead of inserting. A row conflicts when it has the same values for
+    every field in ``unique_fields``; without them (MySQL, which upserts on
+    any unique constraint) on any single unique field. Objects with a null
+    value in the compared fields never conflict, like in the database.
+
+    Rows are fetched with one query per batch of objects, sized to stay
+    within the database's limits on query parameters and expression depth.
+    """
+    groups: List[Tuple[Field, ...]] = (
+        [tuple(_unique_field(model, name) for name in unique_fields)]
+        if unique_fields
+        else [(field,) for field in model._meta.concrete_fields if field.unique]
+    )
+    fields = [field for group in groups for field in group]
+    multi_field = any(len(group) > 1 for group in groups)
+
+    only = {field.name for field in logging_fields} | {field.name for field in fields}
+    found: Dict[Tuple[Field, ...], Dict[Tuple[Any, ...], _M]] = {
+        group: {} for group in groups
+    }
+    for batch in batches(
+        objs, fields, using, max_size=MAX_OR_TERMS if multi_field else None
+    ):
+        condition = Q()
+        for group in groups:
+            keys = {
+                key for key in (_key(obj, group) for obj in batch) if None not in key
+            }
+            if keys:
+                condition |= _match_condition(group, keys)
+        if not condition:
+            continue
+
+        for row in model._base_manager.using(using).filter(condition).only(*only):
+            for group in groups:
+                found[group][_key(row, group)] = row
+
+    rows: Dict[int, _M] = {}
+    for index, obj in enumerate(objs):
+        for group in groups:
+            key = _key(obj, group)
+            if None not in key and key in found[group]:
+                rows[index] = found[group][key]
+                break
+
+    return rows
+
+
+def log_upserted(
+    model: Type[_M],
+    upserted: Iterable[Tuple[_M, _M]],
+    update_fields: Optional[Iterable[str]],
+    run_callbacks: bool,
+    using: Optional[str] = None,
+) -> None:
+    """Log objects that ``bulk_create(update_conflicts=True)`` used to
+    update existing rows, given as ``(object, previous row)`` pairs.
+
+    Only ``update_fields`` are written by the upsert, so only they are
+    compared. The objects get the primary key of the updated row, which
+    Django < 5.0 does not set.
+    """
+    upserted = list(upserted)
+    for obj, row in upserted:
+        obj.pk = row.pk
+        setattr(obj, PRE_INSTANCE_ATTR, row)
+
+    try:
+        _log_fields(
+            model,
+            [obj for obj, _ in upserted],
+            update_fields=update_fields,
+            run_callbacks=run_callbacks,
+            using=using,
+        )
+    finally:
+        for obj, _ in upserted:
+            delattr(obj, PRE_INSTANCE_ATTR)
 
 
 class FieldLoggerQuerySet(models.QuerySet[_M]):
@@ -37,23 +172,49 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         self._for_write = True
 
         ignore_conflicts = kwargs.get("ignore_conflicts", False)
+        update_conflicts = kwargs.get("update_conflicts", False)
+        logging_config = get_config().get(self.model)
+        tracking = log_fields and logging_config is not None
 
-        # With ignore_conflicts, or on databases that cannot return primary
-        # keys from bulk inserts, pks are assigned manually so the logs can
-        # reference their instances.
-        unsaved = [obj for obj in objs if obj.pk is None]
+        # With update_conflicts, objects matching an existing row update it
+        # instead of being inserted; they are logged as changes, not as
+        # creations.
+        existing = (
+            existing_rows(
+                self.model,
+                objs,
+                kwargs.get("unique_fields"),
+                logging_config["logging_fields"],
+                self.db,
+            )
+            if update_conflicts and log_fields and logging_config is not None
+            else {}
+        )
+        new_objs = [obj for index, obj in enumerate(objs) if index not in existing]
+
+        # Primary keys must be assigned manually so the logs can reference
+        # their instances when Django does not set them: with
+        # ignore_conflicts, on databases that cannot return them from bulk
+        # inserts, and with update_conflicts before Django 5.0. With
+        # update_conflicts they are only assigned when logging, to the new
+        # objects alone: an object that updates an existing row would keep
+        # a primary key that is not its row's.
+        unsaved = [obj for obj in new_objs if obj.pk is None]
+        returning = db_supports_returning_pks(self.model, using=self.db)
         manual_pks = isinstance(self.model._meta.pk, models.AutoField) and (
-            ignore_conflicts or not db_supports_returning_pks(self.model, using=self.db)
+            tracking and (django.VERSION < (5, 0) or not returning)
+            if update_conflicts
+            else ignore_conflicts or not returning
         )
         if manual_pks:
-            set_primary_keys(objs, self.model, using=self.db)
+            set_primary_keys(new_objs, self.model, using=self.db)
 
         res = super().bulk_create(objs, **kwargs)
 
         if manual_pks:
             reset_sequences(self.model, using=self.db)
 
-        inserted = objs
+        inserted = new_objs
         if ignore_conflicts and (log_fields or manual_pks):
             # Rows that conflicted were not inserted: they are not logged,
             # and the keys assigned to them are cleared, since no row has
@@ -75,6 +236,13 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         if log_fields:
             _log_fields(
                 self.model, inserted, run_callbacks=run_callbacks, using=self.db
+            )
+            log_upserted(
+                self.model,
+                ((objs[index], row) for index, row in existing.items()),
+                kwargs.get("update_fields"),
+                run_callbacks,
+                using=self.db,
             )
 
         return res

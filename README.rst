@@ -318,6 +318,10 @@ All of them accept two extra keyword arguments:
     Driver.objects.bulk_create([Driver(driver_name='John Doe')])
     Driver.objects.bulk_update(drivers, ['driver_name'], run_callbacks=False)
 
+With ``bulk_create(update_conflicts=True)``, objects that update an
+existing row are logged as changes of the ``update_fields`` instead of
+as creations.
+
 Many-to-many fields
 ~~~~~~~~~~~~~~~~~~~
 
