@@ -4,7 +4,7 @@ from fieldlogger import fieldlogger, managers
 from fieldlogger.models import FieldLog
 
 from .helpers import CREATE_FORM, bulk_check_logs
-from .testapp.models import TestModel, TestModelRelated
+from .testapp.models import SoftDeleteModel, TestModel, TestModelRelated
 
 
 @pytest.mark.django_db(transaction=True)
@@ -45,6 +45,34 @@ def test_set_primary_keys_respects_preset_pks():
 
     fieldlogger.set_primary_keys(logs, FieldLog)
     assert [log.pk for log in logs] == [1, 999]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_set_primary_keys_counts_rows_hidden_by_default_manager():
+    """The next pk is computed over every row, including those that the
+    model's default manager filters out, and works on models without an
+    ``objects`` manager."""
+    SoftDeleteModel.items.create()
+    hidden = SoftDeleteModel.items.create(deleted=True)
+    assert SoftDeleteModel.items.count() == 1
+
+    objs = [SoftDeleteModel()]
+    fieldlogger.set_primary_keys(objs, SoftDeleteModel)
+    assert objs[0].pk == hidden.pk + 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bulk_create_ignore_conflicts_with_filtering_default_manager():
+    """A new row must not get the pk of a hidden row; with
+    ``ignore_conflicts`` that collision would silently drop it."""
+    # The hidden row holds the highest pk, so a max computed over the
+    # visible rows alone would reuse it.
+    SoftDeleteModel.items.create()
+    SoftDeleteModel.items.create(deleted=True)
+
+    SoftDeleteModel.items.bulk_create([SoftDeleteModel()], ignore_conflicts=True)
+
+    assert SoftDeleteModel._base_manager.count() == 3
 
 
 @pytest.mark.django_db(transaction=True)

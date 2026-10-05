@@ -44,7 +44,8 @@ def set_primary_keys(
     using = using or router.db_for_write(model_class)
     with transaction.atomic(using=using):
         next_pk = (
-            model_class.objects.using(using).aggregate(max_pk=Max("pk"))["max_pk"] or 0
+            model_class._base_manager.using(using).aggregate(max_pk=Max("pk"))["max_pk"]
+            or 0
         )
         for obj in objs:
             if obj.pk is None:

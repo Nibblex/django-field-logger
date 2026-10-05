@@ -75,3 +75,18 @@ if django.VERSION >= (5, 0):
             db_persist=True,
         ),
     )
+
+
+class SoftDeleteManager(FieldLoggerManager):
+    """Default manager that hides soft-deleted rows."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
+class SoftDeleteModel(models.Model):
+    """Model whose only manager filters rows and is not named ``objects``."""
+
+    deleted = models.BooleanField(default=False)
+
+    items = SoftDeleteManager()
