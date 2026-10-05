@@ -16,7 +16,7 @@ from django.core.files import File
 from django.db import models
 from django.utils.module_loading import import_string
 
-from .config import get_settings
+from .app_settings import get_settings
 
 
 class Encoder(JSONEncoder):

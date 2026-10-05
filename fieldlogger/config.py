@@ -6,17 +6,16 @@ a per-model logging configuration, resolving the ``logging_enabled``,
 scopes.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Tuple, Type
+from typing import Any, Dict, FrozenSet, List, Tuple, Type
 
 from django.apps import apps
-from django.conf import settings
 from django.db import models
 from django.db.models import Model
 from django.db.models.fields import Field
 from django.utils.module_loading import import_string
 
-if TYPE_CHECKING:
-    from .models import Callback
+from .app_settings import get_settings
+from .models import Callback
 
 ModelConfig = Dict[str, Any]
 
@@ -46,11 +45,6 @@ def _is_loggable_m2m(field: Field) -> bool:
     return isinstance(field, models.ManyToManyField)
 
 
-def get_settings() -> dict:
-    """Return the ``FIELD_LOGGER_SETTINGS`` dict from the Django settings."""
-    return getattr(settings, "FIELD_LOGGER_SETTINGS", {})
-
-
 class LoggingConfig:
     """Lazily builds and caches the per-model logging configuration."""
 
@@ -73,7 +67,7 @@ class LoggingConfig:
     def _fail_silently(self, *configs: dict) -> bool:
         return self._all_scopes("fail_silently", *configs)
 
-    def _callbacks(self, *configs: dict) -> List["Callback"]:
+    def _callbacks(self, *configs: dict) -> List[Callback]:
         """Concatenate the callbacks of all scopes, importing dotted paths."""
         callbacks = list(self._settings.get("CALLBACKS", []))
         for config in configs:
