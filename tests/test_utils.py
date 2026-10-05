@@ -2,27 +2,9 @@ import pytest
 
 from fieldlogger.utils import getrmodel, hasrmodel
 
-from .helpers import CREATE_FORM
-from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
+from .testapp.models import TestModel, TestModelRelated2
 
 
-@pytest.fixture
-def test_instance():
-    related_instance3 = TestModel.objects.create(**CREATE_FORM)
-    related_instance2 = TestModelRelated2.objects.create(
-        **CREATE_FORM, test_related_field3=related_instance3
-    )
-    related_instance = TestModelRelated.objects.create(
-        **CREATE_FORM, test_related_field2=related_instance2
-    )
-    instance = TestModel.objects.create(
-        **CREATE_FORM, test_related_field=related_instance
-    )
-    instance.test_attribute = "test"
-    return instance
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize(
     "field", [field for field in TestModel._meta.fields if field.name != "id"]
 )
@@ -34,7 +16,6 @@ class TestUtilsOnDirectFields:
         assert hasrmodel(TestModel, field.name) == field.is_relation
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize("sep", [".", "__"])
 @pytest.mark.parametrize(
     "related_field",
@@ -77,7 +58,6 @@ class TestUtilsOnRelatedFields:
         assert hasrmodel(TestModel, sep.join(rattr)) == bool(expected_cls)
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize("sep", [".", "__"])
 @pytest.mark.parametrize(
     "related_field",

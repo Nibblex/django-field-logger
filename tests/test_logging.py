@@ -11,6 +11,10 @@ from .helpers import (
 )
 from .testapp.models import TestModel, TestModelRelated
 
+# CREATE_FORM/UPDATE_FORM plus the test_related_field foreign key.
+CREATE_LOG_COUNT = len(CREATE_FORM) + 1
+UPDATE_LOG_COUNT = len(UPDATE_FORM) + 1
+
 
 @pytest.fixture
 def update_form():
@@ -18,36 +22,30 @@ def update_form():
 
 
 @pytest.fixture
-def test_instance(expected_count):
-    instance = TestModel.objects.create(
+def test_instance():
+    return TestModel.objects.create(
         **CREATE_FORM, test_related_field=TestModelRelated.objects.create()
     )
-
-    check_logs(instance, len(CREATE_FORM) + 1, created=True)
-    yield instance
-    check_logs(instance, expected_count)
 
 
 @pytest.mark.django_db(transaction=True)
 class TestCase1:
-    @pytest.mark.parametrize("expected_count", [0])
-    def test_log_on_create(self, test_instance, expected_count):
-        pass
+    def test_log_on_create(self, test_instance):
+        check_logs(test_instance, CREATE_LOG_COUNT, created=True)
+        check_logs(test_instance, 0)
 
     @pytest.mark.parametrize("update_fields", [False, True])
-    @pytest.mark.parametrize("expected_count", [len(UPDATE_FORM) + 1])
-    def test_log_on_save(
-        self, test_instance, update_form, update_fields, expected_count
-    ):
+    def test_log_on_save(self, test_instance, update_form, update_fields):
         set_attributes(test_instance, update_form, update_fields)
 
+        check_logs(test_instance, UPDATE_LOG_COUNT)
+
     @pytest.mark.parametrize("update_fields", [False, True])
-    @pytest.mark.parametrize("expected_count", [len(UPDATE_FORM) + 1])
-    def test_log_on_save_twice(
-        self, test_instance, update_form, update_fields, expected_count
-    ):
+    def test_log_on_save_twice(self, test_instance, update_form, update_fields):
         set_attributes(test_instance, update_form, update_fields)
         set_attributes(test_instance, update_form, update_fields)
+
+        check_logs(test_instance, UPDATE_LOG_COUNT)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -66,10 +64,10 @@ class TestCase2:
 
 
 @pytest.fixture
-def test_instances(expected_count, log_fields, run_callbacks, ignore_conflicts):
+def test_instances(log_fields, run_callbacks, ignore_conflicts):
     related_instance = TestModelRelated.objects.create()
 
-    instances = TestModel.objects.bulk_create(
+    return TestModel.objects.bulk_create(
         [
             TestModel(test_related_field=related_instance, **CREATE_FORM)
             for _ in range(5)
@@ -79,14 +77,15 @@ def test_instances(expected_count, log_fields, run_callbacks, ignore_conflicts):
         ignore_conflicts=ignore_conflicts,
     )
 
-    bulk_check_logs(
+
+def bulk_update(instances, update_form, log_fields, run_callbacks):
+    bulk_set_attributes(instances, update_form, save=False)
+    TestModel.objects.bulk_update(
         instances,
-        len(CREATE_FORM) + 1 if log_fields else 0,
-        run_callbacks,
-        created=True,
+        update_form.keys(),
+        log_fields=log_fields,
+        run_callbacks=run_callbacks,
     )
-    yield instances
-    bulk_check_logs(instances, expected_count if log_fields else 0, run_callbacks)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -94,41 +93,24 @@ def test_instances(expected_count, log_fields, run_callbacks, ignore_conflicts):
 @pytest.mark.parametrize("run_callbacks", [True, False])
 @pytest.mark.parametrize("ignore_conflicts", [False, True])
 class TestCase3:
-    @pytest.mark.parametrize("expected_count", [0])
     def test_log_on_bulk_create(self, test_instances, log_fields, run_callbacks):
-        pass
+        expected_count = CREATE_LOG_COUNT if log_fields else 0
+        bulk_check_logs(test_instances, expected_count, run_callbacks, created=True)
+        bulk_check_logs(test_instances, 0, run_callbacks)
 
-    @pytest.mark.parametrize("expected_count", [len(UPDATE_FORM) + 1])
     def test_log_on_bulk_update(
         self, test_instances, update_form, log_fields, run_callbacks
     ):
-        bulk_set_attributes(test_instances, update_form, save=False)
+        bulk_update(test_instances, update_form, log_fields, run_callbacks)
 
-        TestModel.objects.bulk_update(
-            test_instances,
-            update_form.keys(),
-            log_fields=log_fields,
-            run_callbacks=run_callbacks,
-        )
+        expected_count = UPDATE_LOG_COUNT if log_fields else 0
+        bulk_check_logs(test_instances, expected_count, run_callbacks)
 
-    @pytest.mark.parametrize("expected_count", [len(UPDATE_FORM) + 1])
     def test_log_on_bulk_update_twice(
         self, test_instances, update_form, log_fields, run_callbacks
     ):
-        bulk_set_attributes(test_instances, update_form, save=False)
+        bulk_update(test_instances, update_form, log_fields, run_callbacks)
+        bulk_update(test_instances, update_form, log_fields, run_callbacks)
 
-        TestModel.objects.bulk_update(
-            test_instances,
-            update_form.keys(),
-            log_fields=log_fields,
-            run_callbacks=run_callbacks,
-        )
-
-        bulk_set_attributes(test_instances, update_form, save=False)
-
-        TestModel.objects.bulk_update(
-            test_instances,
-            update_form.keys(),
-            log_fields=log_fields,
-            run_callbacks=run_callbacks,
-        )
+        expected_count = UPDATE_LOG_COUNT if log_fields else 0
+        bulk_check_logs(test_instances, expected_count, run_callbacks)
