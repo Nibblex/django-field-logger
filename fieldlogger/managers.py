@@ -18,6 +18,9 @@ class FieldLoggerManager(models.Manager):
     def bulk_create(
         self, objs, log_fields: bool = True, run_callbacks: bool = True, **kwargs
     ):
+        # Materialized because the objects are iterated more than once.
+        objs = list(objs)
+
         # With ignore_conflicts, or on databases that cannot return primary
         # keys from bulk inserts, pks must be assigned manually so the logs
         # can reference their instances.
@@ -52,6 +55,9 @@ class FieldLoggerManager(models.Manager):
         run_callbacks: bool = True,
         **kwargs,
     ):
+        # Materialized because the objects are iterated more than once.
+        objs = list(objs)
+
         logging_config = get_config().get(self.model)
         if not log_fields or logging_config is None:
             return super().bulk_update(objs, fields, **kwargs)
