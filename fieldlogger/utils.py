@@ -11,13 +11,14 @@ def getrmodel(cls: Type[Model], rfield: str) -> Optional[Type[Model]]:
     to from ``cls``, or ``None`` if the path does not resolve to a relation."""
     attrs = rfield.replace(".", "__").split("__")
 
-    def _getrmodel(c, attr):
+    def _getrmodel(c: Optional[Type[Model]], attr: str) -> Optional[Type[Model]]:
         # Attributes that are not field descriptors (e.g. properties or
         # managers) have no ``field`` and do not resolve.
         field = getattr(getattr(c, attr, None), "field", None)
         return field.related_model if field is not None else None
 
-    return reduce(_getrmodel, attrs, cls)
+    initial: Optional[Type[Model]] = cls
+    return reduce(_getrmodel, attrs, initial)
 
 
 def hasrmodel(cls: Type[Model], rfield: str) -> bool:

@@ -5,7 +5,7 @@ class FieldloggerConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "fieldlogger"
 
-    def ready(self):
+    def ready(self) -> None:
         # Imported here because signals (and the configuration it loads)
         # need the app registry to be ready.
         from . import signals
