@@ -41,27 +41,53 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  postgres:
+  # The suite against database servers. Their tox envs are not in
+  # env_list; `tox -m <backend>` selects them.
+  servers:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: postgres
+            image: postgres:16
+            port: 5432
+            health: pg_isready
+          - backend: mysql
+            image: mysql:8.4
+            port: 3306
+            health: mysqladmin ping -h 127.0.0.1 -ptest
+          - backend: mariadb
+            image: mariadb:11
+            port: 3306
+            health: healthcheck.sh --connect --innodb_initialized
+          - backend: oracle
+            image: gvenzl/oracle-free:23-slim-faststart
+            port: 1521
+            health: healthcheck.sh
+
     services:
-      postgres:
-        image: postgres:16
+      db:
+        image: ${{ matrix.image }}
+        # Every image reads only its own variable.
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
+          MARIADB_ROOT_PASSWORD: test
+          ORACLE_PASSWORD: test
         ports:
-          - 5432:5432
+          - ${{ matrix.port }}:${{ matrix.port }}
         options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 30
 
     env:
-      PGHOST: localhost
-      PGPORT: "5432"
-      PGUSER: postgres
-      PGPASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: ${{ matrix.port }}
+      DB_PASSWORD: test
 
     steps:
       - uses: actions/checkout@v5
@@ -76,6 +102,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[dev]
 
-      # The postgres-* envs are not in env_list; the label selects them.
       - name: Run tox
-        run: tox -q -m postgres
+        run: tox -q -m ${{ matrix.backend }}

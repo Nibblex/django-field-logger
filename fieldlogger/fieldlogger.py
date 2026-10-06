@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
 
-from django.db import router, transaction
+from django.db import connections, router, transaction
 from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
@@ -41,13 +41,21 @@ def _save_logs(field_logs: Sequence[FieldLog]) -> None:
             field_log.save(using=using, force_insert=True)
 
 
-def _stored_value(row: Model, field: Field) -> Any:
-    """Value of ``field`` in a row read from the database."""
+def _stored_value(row: Model, field: Field, empty_is_null: bool) -> Any:
+    """Value of ``field`` in a row read from the database.
+
+    ``empty_is_null`` is set on databases that store empty strings as NULL
+    (Oracle), where Django reads NULL text and binary columns back as empty
+    values; they are logged as None, so that creating a row does not log a
+    change from None to an empty value.
+    """
     value = getattr(row, field.attname)
     if isinstance(value, FieldFile):
         # Files are logged by name; Django stores "no file" as an empty
         # name, which is logged as None like any other missing value.
         return value.name or None
+    if empty_is_null and value in ("", b""):
+        return None
     return value
 
 
@@ -74,6 +82,7 @@ def _log_fields(
         return {}
 
     using = using or router.db_for_write(model_class)
+    empty_is_null = connections[using].features.interprets_empty_strings_as_nulls
     stored = (
         model_class._base_manager.using(using)
         .only(*(field.name for field in logging_fields))
@@ -91,8 +100,12 @@ def _log_fields(
         pre_instance = getattr(instance, PRE_INSTANCE_ATTR, None)
 
         for field in logging_fields:
-            new_value = _stored_value(row, field)
-            old_value = _stored_value(pre_instance, field) if pre_instance else None
+            new_value = _stored_value(row, field, empty_is_null)
+            old_value = (
+                _stored_value(pre_instance, field, empty_is_null)
+                if pre_instance
+                else None
+            )
             if new_value == old_value:
                 continue
 

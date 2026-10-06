@@ -130,3 +130,20 @@ class TestBulk:
         )
 
         assert field_logs(instance, "test_decimal_field") == [(True, None, 3.15)]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_empty_values_are_null_where_the_database_stores_them_as_null(monkeypatch):
+    """Oracle stores empty strings as NULL and Django reads NULL text and
+    binary columns back as empty values: creating a row must not log a
+    change from None to an empty value."""
+    monkeypatch.setattr(
+        type(connection.features), "interprets_empty_strings_as_nulls", True
+    )
+
+    instance = TestModel.objects.create(test_char_field="", test_binary_field=b"")
+    instance.test_char_field = "x"
+    instance.save()
+
+    assert field_logs(instance, "test_char_field") == [(False, None, "x")]
+    assert field_logs(instance, "test_binary_field") == []
