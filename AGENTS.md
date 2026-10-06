@@ -15,6 +15,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - Coverage gate is `fail_under = 100` (migrations excluded). Every new branch needs a test.
 - Matrix lives in `[tool.tox]` in `pyproject.toml`. CI runs `tox -f py313` (all Django versions for that Python); `-e py313` would run with no Django pin.
 - `testapp` (`tests/testapp/`) has no migrations; tables are synced. Two SQLite DBs (`default`, `other`) exist for multi-db tests.
+- PostgreSQL: `tox -m postgres` (envs `postgres-django{61,52,42}`, not in `env_list`, own CI job). Needs a server from the `PG*` env vars, e.g. `docker run -d --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine`. Sequence bugs only show there: SQLite and MySQL follow explicit pks.
 - Backends without bulk-insert RETURNING (MySQL, Oracle, old SQLite): use the `no_returning_pks` fixture (patches the connection feature). Do not monkeypatch `db_supports_returning_pks`: Django's `bulk_create` ignores it.
 - Tests mutate `settings.FIELD_LOGGER_SETTINGS` in place: use `helpers.set_config(...)` plus the `restore_settings` fixture, or call `helpers.refresh_config()` after any manual change. `override_settings` also works (handled by `setting_changed_receiver`).
 

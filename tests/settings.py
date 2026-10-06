@@ -19,6 +19,21 @@ DATABASES = {
     },
 }
 
+# Run the suite against PostgreSQL with TEST_DB=postgres (see the
+# "postgres" tox factor); connection settings come from the PG* variables.
+if os.environ.get("TEST_DB") == "postgres":
+    DATABASES = {
+        alias: {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": name,
+            "USER": os.environ.get("PGUSER", "postgres"),
+            "PASSWORD": os.environ.get("PGPASSWORD", "postgres"),
+            "HOST": os.environ.get("PGHOST", "localhost"),
+            "PORT": os.environ.get("PGPORT", "5432"),
+        }
+        for alias, name in (("default", "fieldlogger"), ("other", "fieldlogger_other"))
+    }
+
 INSTALLED_APPS = [
     "fieldlogger",
     "tests.testapp.apps.TestAppConfig",
