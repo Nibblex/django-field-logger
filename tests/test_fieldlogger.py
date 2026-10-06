@@ -1,7 +1,6 @@
 import pytest
 
 from fieldlogger import fieldlogger, managers
-from fieldlogger.models import FieldLog
 
 from .helpers import CREATE_FORM, bulk_check_logs
 from .testapp.models import SoftDeleteModel, TestModel, TestModelRelated
@@ -22,43 +21,6 @@ def test_log_fields_returns_logs_keyed_by_pk_and_field_name():
 
     assert set(logs) == {instance.pk}
     assert logs[instance.pk]["test_char_field"].new_value == "test"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_set_primary_keys_assigns_sequential_pks():
-    logs = [
-        FieldLog(app_label="testapp", model_name="testmodel", field="f", instance_id=i)
-        for i in range(3)
-    ]
-
-    fieldlogger.set_primary_keys(logs, FieldLog)
-    max_pk = FieldLog.objects.count()
-    assert [log.pk for log in logs] == [max_pk + 1, max_pk + 2, max_pk + 3]
-
-
-@pytest.mark.django_db(transaction=True)
-def test_set_primary_keys_keeps_preset_pks():
-    logs = [
-        FieldLog(app_label="testapp", model_name="testmodel", field="f"),
-        FieldLog(app_label="testapp", model_name="testmodel", field="f", pk=999),
-    ]
-
-    fieldlogger.set_primary_keys(logs, FieldLog)
-    assert [log.pk for log in logs] == [1, 999]
-
-
-@pytest.mark.django_db(transaction=True)
-def test_set_primary_keys_counts_rows_hidden_by_default_manager():
-    """The next pk is computed over every row, including those that the
-    model's default manager filters out, and works on models without an
-    ``objects`` manager."""
-    SoftDeleteModel.items.create()
-    hidden = SoftDeleteModel.items.create(deleted=True)
-    assert SoftDeleteModel.items.count() == 1
-
-    objs = [SoftDeleteModel()]
-    fieldlogger.set_primary_keys(objs, SoftDeleteModel)
-    assert objs[0].pk == hidden.pk + 1
 
 
 @pytest.mark.django_db(transaction=True)

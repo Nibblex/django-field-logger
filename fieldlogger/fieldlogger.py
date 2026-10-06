@@ -3,12 +3,13 @@
 import logging
 from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
 
-from django.db import connections, router, transaction
-from django.db.models import ManyToManyField, Max, Model
+from django.db import router
+from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
 
 from .config import get_config, through_model
+from .db import db_supports_returning_pks, set_primary_keys
 from .models import Callback, FieldLog
 
 # Logs created in a single operation, keyed by instance pk and field name.
@@ -20,43 +21,6 @@ logger = logging.getLogger(__name__)
 # the "pre" and "post" signals (or around a bulk update).
 PRE_INSTANCE_ATTR = "_fieldlogger_pre_instance"
 PRE_M2M_ATTR = "_fieldlogger_pre_m2m"
-
-
-def db_supports_returning_pks(
-    model_class: Type[Model], using: Optional[str] = None
-) -> bool:
-    """Return whether the database that ``model_class`` writes to sets
-    primary keys on bulk-created objects.
-
-    Backends without this capability need primary keys to be assigned
-    manually with ``set_primary_keys`` before calling ``bulk_create``.
-    """
-    using = using or router.db_for_write(model_class)
-    return connections[using].features.can_return_rows_from_bulk_insert
-
-
-def set_primary_keys(
-    objs: Sequence[Model], model_class: Type[Model], using: Optional[str] = None
-) -> None:
-    """Assign sequential primary keys to ``objs`` before a bulk insert.
-
-    Needed on databases that cannot return primary keys from bulk inserts
-    (see ``db_supports_returning_pks``). Objects that already have a
-    primary key are left untouched.
-
-    Note that concurrent bulk inserts may compute the same starting key;
-    callers that need concurrency must serialize these operations.
-    """
-    using = using or router.db_for_write(model_class)
-    with transaction.atomic(using=using):
-        next_pk = (
-            model_class._base_manager.using(using).aggregate(max_pk=Max("pk"))["max_pk"]
-            or 0
-        )
-        for obj in objs:
-            if obj.pk is None:
-                next_pk += 1
-                obj.pk = next_pk
 
 
 def _stored_value(row: Model, field: Field) -> Any:

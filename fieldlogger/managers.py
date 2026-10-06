@@ -5,7 +5,8 @@ from typing import Any, Iterable, List, Optional, Sequence, TypeVar
 from django.db import models
 
 from .config import get_config
-from .fieldlogger import PRE_INSTANCE_ATTR, db_supports_returning_pks, set_primary_keys
+from .db import db_supports_returning_pks, set_primary_keys
+from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
 
 _M = TypeVar("_M", bound=models.Model)
