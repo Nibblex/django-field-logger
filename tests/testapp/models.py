@@ -67,6 +67,11 @@ class TestModel(FieldLoggerMixin, TestingFieldsMixin):
 
 
 if django.VERSION >= (5, 0):
+    # Not logged by the default test settings; see test_stored_values.py.
+    TestModelRelated.add_to_class(
+        "test_db_default_field",
+        models.IntegerField(db_default=7),
+    )
     TestModel.add_to_class(
         "test_generated_field",
         models.GeneratedField(

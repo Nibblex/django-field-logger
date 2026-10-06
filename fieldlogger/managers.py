@@ -51,7 +51,9 @@ class FieldLoggerManager(models.Manager[_M]):
                 )
                 logged_objs = [obj for obj in objs if obj.pk in inserted_pks]
 
-            _log_fields(self.model, logged_objs, run_callbacks=run_callbacks)
+            _log_fields(
+                self.model, logged_objs, run_callbacks=run_callbacks, using=self.db
+            )
 
         return res
 
@@ -86,7 +88,11 @@ class FieldLoggerManager(models.Manager[_M]):
 
         try:
             _log_fields(
-                self.model, objs, update_fields=fields, run_callbacks=run_callbacks
+                self.model,
+                objs,
+                update_fields=fields,
+                run_callbacks=run_callbacks,
+                using=self.db,
             )
         finally:
             for obj in objs:

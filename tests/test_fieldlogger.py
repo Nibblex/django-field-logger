@@ -25,7 +25,7 @@ def test_log_fields_returns_logs_keyed_by_pk_and_field_name():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_set_primary_keys():
+def test_set_primary_keys_assigns_sequential_pks():
     logs = [
         FieldLog(app_label="testapp", model_name="testmodel", field="f", instance_id=i)
         for i in range(3)
@@ -37,7 +37,7 @@ def test_set_primary_keys():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_set_primary_keys_respects_preset_pks():
+def test_set_primary_keys_keeps_preset_pks():
     logs = [
         FieldLog(app_label="testapp", model_name="testmodel", field="f"),
         FieldLog(app_label="testapp", model_name="testmodel", field="f", pk=999),
@@ -76,10 +76,21 @@ def test_bulk_create_ignore_conflicts_with_filtering_default_manager():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_log_fields_skips_unreadable_fields():
-    """Fields that cannot be read from the previous state are skipped."""
+def test_log_fields_without_logged_fields_queries_nothing(django_assert_num_queries):
     instance = TestModel.objects.create(test_char_field="x")
-    instance._fieldlogger_pre_instance = object()
+
+    with django_assert_num_queries(0):
+        logs = fieldlogger.log_fields(
+            TestModel, [instance], update_fields=["not_logged"], run_callbacks=False
+        )
+
+    assert logs == {}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_log_fields_skips_instances_missing_from_the_database():
+    instance = TestModel.objects.create(test_char_field="x")
+    TestModel.objects.filter(pk=instance.pk).delete()
 
     assert fieldlogger.log_fields(TestModel, [instance], run_callbacks=False) == {}
 
@@ -96,7 +107,7 @@ def test_failing_callback_is_logged_when_fail_silently(caplog):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_bulk_create_without_pk_returning_support(monkeypatch):
+def test_bulk_create_logs_without_pk_returning_support(monkeypatch):
     """On databases that cannot return pks from bulk inserts, pks are
     assigned manually and logging still works."""
     monkeypatch.setattr(

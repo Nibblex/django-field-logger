@@ -23,7 +23,7 @@ def m2m_logs(instance):
 
 @pytest.mark.django_db(transaction=True)
 class TestM2MLogging:
-    def test_add(self, instance, related):
+    def test_add_logs_old_and_new_pks(self, instance, related):
         instance.test_many_to_many_field.add(*related)
 
         log = m2m_logs(instance).get()
@@ -38,7 +38,7 @@ class TestM2MLogging:
 
         assert m2m_logs(instance).count() == 1
 
-    def test_remove(self, instance, related):
+    def test_remove_logs_old_and_new_pks(self, instance, related):
         instance.test_many_to_many_field.add(*related)
         instance.test_many_to_many_field.remove(related[0])
 
@@ -47,7 +47,7 @@ class TestM2MLogging:
         assert log.new_value == sorted(obj.pk for obj in related[1:])
         assert log.previous_log == m2m_logs(instance).first()
 
-    def test_clear(self, instance, related):
+    def test_clear_logs_empty_new_value(self, instance, related):
         instance.test_many_to_many_field.add(*related)
         instance.test_many_to_many_field.clear()
 
@@ -55,7 +55,7 @@ class TestM2MLogging:
         assert log.old_value == sorted(obj.pk for obj in related)
         assert log.new_value == []
 
-    def test_set(self, instance, related):
+    def test_set_logs_resulting_pks(self, instance, related):
         first, second, third = related
         instance.test_many_to_many_field.add(first, second)
         instance.test_many_to_many_field.set([second, third])
@@ -67,14 +67,16 @@ class TestM2MLogging:
             third.pk,
         }
 
-    def test_reverse_add(self, instance, related):
+    def test_add_from_reverse_side_logs_on_declaring_model(self, instance, related):
         related[0].test_reverse_m2m.add(instance)
 
         log = m2m_logs(instance).get()
         assert log.old_value == []
         assert log.new_value == [related[0].pk]
 
-    def test_reverse_clear(self, instance, related):
+    def test_clear_from_reverse_side_logs_each_affected_instance(
+        self, instance, related
+    ):
         instance.test_many_to_many_field.add(*related)
         other_instance = TestModel.objects.create()
         other_instance.test_many_to_many_field.add(related[0])
@@ -97,7 +99,7 @@ def test_log_m2m_fields_on_unconfigured_model(instance, related):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_log_m2m_fields_without_changes(instance, related):
+def test_log_m2m_fields_skips_unchanged_instances(instance, related):
     instance.test_many_to_many_field.add(*related)
     field = TestModel._meta.get_field("test_many_to_many_field")
 
@@ -129,7 +131,7 @@ def test_receiver_ignores_post_without_pre_state(instance):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_m2m_without_pk_returning_support(monkeypatch, instance, related):
+def test_m2m_logs_without_pk_returning_support(monkeypatch, instance, related):
     monkeypatch.setattr(
         fieldlogger, "db_supports_returning_pks", lambda *args, **kwargs: False
     )
