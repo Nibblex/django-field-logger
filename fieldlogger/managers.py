@@ -5,7 +5,7 @@ from typing import Any, Iterable, List, Optional, Sequence, TypeVar
 from django.db import models
 
 from .config import get_config
-from .db import db_supports_returning_pks, set_primary_keys
+from .db import db_supports_returning_pks, reset_sequences, set_primary_keys
 from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
 
@@ -33,13 +33,17 @@ class FieldLoggerManager(models.Manager[_M]):
         # With ignore_conflicts, or on databases that cannot return primary
         # keys from bulk inserts, pks must be assigned manually so the logs
         # can reference their instances.
-        if isinstance(self.model._meta.pk, models.AutoField) and (
+        manual_pks = isinstance(self.model._meta.pk, models.AutoField) and (
             kwargs.get("ignore_conflicts", False)
             or not db_supports_returning_pks(self.model, using=self.db)
-        ):
+        )
+        if manual_pks:
             set_primary_keys(objs, self.model, using=self.db)
 
         res = super().bulk_create(objs, **kwargs)
+
+        if manual_pks:
+            reset_sequences(self.model, using=self.db)
 
         if log_fields:
             logged_objs = objs

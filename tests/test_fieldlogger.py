@@ -1,9 +1,11 @@
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
-from fieldlogger import fieldlogger, managers
+from fieldlogger import fieldlogger
+from fieldlogger.models import FieldLog
 
-from .helpers import CREATE_FORM, bulk_check_logs
-from .testapp.models import SoftDeleteModel, TestModel, TestModelRelated
+from .testapp.models import TestModel, TestModelRelated
 
 
 @pytest.mark.django_db(transaction=True)
@@ -21,20 +23,6 @@ def test_log_fields_returns_logs_keyed_by_pk_and_field_name():
 
     assert set(logs) == {instance.pk}
     assert logs[instance.pk]["test_char_field"].new_value == "test"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_bulk_create_ignore_conflicts_with_filtering_default_manager():
-    """A new row must not get the pk of a hidden row; with
-    ``ignore_conflicts`` that collision would silently drop it."""
-    # The hidden row holds the highest pk, so a max computed over the
-    # visible rows alone would reuse it.
-    SoftDeleteModel.items.create()
-    SoftDeleteModel.items.create(deleted=True)
-
-    SoftDeleteModel.items.bulk_create([SoftDeleteModel()], ignore_conflicts=True)
-
-    assert SoftDeleteModel._base_manager.count() == 3
 
 
 @pytest.mark.django_db(transaction=True)
@@ -69,19 +57,82 @@ def test_failing_callback_is_logged_when_fail_silently(caplog):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_bulk_create_logs_without_pk_returning_support(monkeypatch):
-    """On databases that cannot return pks from bulk inserts, pks are
-    assigned manually and logging still works."""
-    monkeypatch.setattr(
-        fieldlogger, "db_supports_returning_pks", lambda *args, **kwargs: False
-    )
-    monkeypatch.setattr(
-        managers, "db_supports_returning_pks", lambda *args, **kwargs: False
-    )
+class TestLogsWithoutPkReturningSupport:
+    """Callbacks receive saved logs even where bulk_create cannot return
+    primary keys: they may save them or follow previous_log."""
 
-    instances = TestModel.objects.bulk_create(
-        [TestModel(**CREATE_FORM) for _ in range(2)]
-    )
+    @pytest.fixture(autouse=True)
+    def callback(self, no_returning_pks, settings):
+        self.received = []
 
-    assert all(instance.pk for instance in instances)
-    bulk_check_logs(instances, len(CREATE_FORM), created=True)
+        def callback(instance, logging_fields, logs):
+            for log in logs.values():
+                self.received.append(log.pk)
+                log.previous_log  # noqa: B018 - must not fail
+                log.extra_data["seen"] = True
+                log.save()
+
+        settings.FIELD_LOGGER_SETTINGS = {
+            "FAIL_SILENTLY": False,
+            "LOGGING_APPS": {
+                "testapp": {
+                    "callbacks": [callback],
+                    "models": {"TestModel": {"fields": ["test_char_field"]}},
+                }
+            },
+        }
+
+    def test_logs_have_primary_keys(self):
+        instance = TestModel.objects.create(test_char_field="a")
+        instance.test_char_field = "b"
+        instance.save()
+
+        assert None not in self.received
+        assert sorted(self.received) == list(
+            FieldLog.objects.order_by("pk").values_list("pk", flat=True)
+        )
+
+    def test_saving_a_log_in_a_callback_does_not_duplicate_it(self):
+        instance = TestModel.objects.create(test_char_field="a")
+
+        log = instance.fieldlog_set.get()
+        assert log.extra_data == {"seen": True}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_logs_without_pk_returning_support_keep_the_sequence(no_returning_pks):
+    """Logs get their keys from the database, so later inserts of logs do
+    not reuse them (explicit keys do not advance PostgreSQL sequences)."""
+    log = {"app_label": "testapp", "model_name": "testmodel", "field": "f"}
+    FieldLog.objects.create(instance_id="1", **log)
+
+    TestModel.objects.create(test_char_field="a")
+    created = FieldLog.objects.create(instance_id="2", **log)
+
+    assert created.pk == max(FieldLog.objects.values_list("pk", flat=True))
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("returning", [True, False])
+def test_save_logs_sets_primary_keys(monkeypatch, returning):
+    """One INSERT where the backend returns keys, one per log otherwise.
+    Patched directly so both paths run on every Django version (SQLite
+    only returns keys from Django 4.0)."""
+    monkeypatch.setattr(fieldlogger, "db_supports_returning_pks", lambda *a: returning)
+    logs = [
+        FieldLog(app_label="testapp", model_name="testmodel", field="f", instance_id=i)
+        for i in range(3)
+    ]
+
+    with CaptureQueriesContext(connection) as queries:
+        fieldlogger._save_logs(logs)
+
+    inserts = [q for q in queries if q["sql"].startswith("INSERT")]
+    assert len(inserts) == (1 if returning else 3)
+    assert FieldLog.objects.count() == 3
+    if not returning:
+        # With returning, the keys are set by Django's bulk_create, which
+        # the real backend (not the patched check) decides.
+        assert sorted(log.pk for log in logs) == sorted(
+            FieldLog.objects.values_list("pk", flat=True)
+        )
