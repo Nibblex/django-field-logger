@@ -5,7 +5,8 @@ from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type
 
 from django.db import connections, router, transaction
 from django.db.models import ManyToManyField, Max, Model
-from django.db.models.fields import DecimalField, Field
+from django.db.models.fields import Field
+from django.db.models.fields.files import FieldFile
 
 from .config import get_config, through_model
 from .models import Callback, FieldLog
@@ -58,31 +59,58 @@ def set_primary_keys(
                 obj.pk = next_pk
 
 
-def _log_fields(instances: Iterable[Model], logging_fields: FrozenSet[Field]) -> Logs:
+def _stored_value(row: Model, field: Field) -> Any:
+    """Value of ``field`` in a row read from the database."""
+    value = getattr(row, field.attname)
+    if isinstance(value, FieldFile):
+        # Files are logged by name; Django stores "no file" as an empty
+        # name, which is logged as None like any other missing value.
+        return value.name or None
+    return value
+
+
+def _log_fields(
+    model_class: Type[Model],
+    instances: Sequence[Model],
+    logging_fields: FrozenSet[Field],
+    using: Optional[str] = None,
+) -> Logs:
     """Create a ``FieldLog`` for every changed field of every instance.
 
     The previous state of each instance is read from its
-    ``PRE_INSTANCE_ATTR`` attribute; instances without it are
-    considered newly created.
+    ``PRE_INSTANCE_ATTR`` attribute; instances without it are considered
+    newly created. The new state is read back from the database rather
+    than from the instances: in memory a field may hold an expression
+    (``F()``, a database function, ``db_default``) or a value the database
+    stores differently (e.g. a ``Decimal`` with more decimal places than
+    the field). Instances whose row is not found are not logged.
+
+    Values are compared by ``attname``, so foreign keys are compared by
+    their raw value without fetching the related instances.
     """
+    if not logging_fields or not instances:
+        return {}
+
+    using = using or router.db_for_write(model_class)
+    stored = (
+        model_class._base_manager.using(using)
+        .only(*(field.name for field in logging_fields))
+        .in_bulk([instance.pk for instance in instances])
+    )
+
     logs: Logs = {}
     field_logs_to_create = []
 
     for instance in instances:
+        row = stored.get(instance.pk)
+        if row is None:
+            continue
+
         pre_instance = getattr(instance, PRE_INSTANCE_ATTR, None)
 
         for field in logging_fields:
-            try:
-                new_value = getattr(instance, field.name)
-                if isinstance(field, DecimalField):
-                    new_value = FieldLog.from_db_field(field, new_value)
-
-                old_value = getattr(pre_instance, field.name) if pre_instance else None
-
-            except AttributeError:
-                # E.g. a foreign key whose related instance was deleted.
-                continue
-
+            new_value = _stored_value(row, field)
+            old_value = _stored_value(pre_instance, field) if pre_instance else None
             if new_value == old_value:
                 continue
 
@@ -104,6 +132,11 @@ def _log_fields(instances: Iterable[Model], logging_fields: FrozenSet[Field]) ->
         if not db_supports_returning_pks(FieldLog):
             set_primary_keys(field_logs_to_create, FieldLog)
         FieldLog.objects.bulk_create(field_logs_to_create)
+
+        # Give callbacks the same values as a log loaded from the database
+        # (e.g. related instances instead of raw foreign key values).
+        for field_log in field_logs_to_create:
+            field_log._convert_db_values()
 
     return logs
 
@@ -134,10 +167,13 @@ def log_fields(
     instances: Iterable[Model],
     update_fields: Optional[Iterable[str]] = None,
     run_callbacks: bool = True,
+    using: Optional[str] = None,
 ) -> Logs:
     """Log field changes for ``instances`` of the ``sender`` model.
 
-    If ``update_fields`` is given, only those fields are considered.
+    If ``update_fields`` is given, only those fields are considered. The
+    new values are read from the ``using`` database (by default, the one
+    the model is written to).
     Returns the created logs keyed by instance pk and field name; returns
     an empty dict if ``sender`` is not configured for logging.
     """
@@ -152,7 +188,8 @@ def log_fields(
             field for field in logging_fields if field.name in update_fields
         )
 
-    logs = _log_fields(instances, logging_fields)
+    instances = list(instances)
+    logs = _log_fields(sender, instances, logging_fields, using)
 
     if run_callbacks:
         _run_callbacks(

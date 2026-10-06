@@ -76,10 +76,21 @@ def test_bulk_create_ignore_conflicts_with_filtering_default_manager():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_log_fields_skips_unreadable_fields():
-    """Fields that cannot be read from the previous state are skipped."""
+def test_log_fields_without_logged_fields_queries_nothing(django_assert_num_queries):
     instance = TestModel.objects.create(test_char_field="x")
-    instance._fieldlogger_pre_instance = object()
+
+    with django_assert_num_queries(0):
+        logs = fieldlogger.log_fields(
+            TestModel, [instance], update_fields=["not_logged"], run_callbacks=False
+        )
+
+    assert logs == {}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_log_fields_skips_instances_missing_from_the_database():
+    instance = TestModel.objects.create(test_char_field="x")
+    TestModel.objects.filter(pk=instance.pk).delete()
 
     assert fieldlogger.log_fields(TestModel, [instance], run_callbacks=False) == {}
 

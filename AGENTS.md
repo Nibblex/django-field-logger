@@ -20,7 +20,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 ## Architecture gotchas
 
 - Config is built lazily and cached (`config.py`); signals are connected in `FieldloggerConfig.ready()` only for configured models. After changing settings at runtime: `invalidate_config()` + `connect_signals()`.
-- Save-path logging: `pre_save` stashes DB state on `instance._fieldlogger_pre_instance`, `post_save` diffs it. M2M uses `m2m_changed` on the through model (`_fieldlogger_pre_m2m`). Bulk ops are logged only via `FieldLoggerManager`.
+- Save-path logging: `pre_save` stashes DB state on `instance._fieldlogger_pre_instance`, `post_save` re-reads the logged fields from the DB and diffs both (never diff in-memory values: they may be expressions or unrounded). M2M uses `m2m_changed` on the through model (`_fieldlogger_pre_m2m`). Bulk ops are logged only via `FieldLoggerManager`.
 - Intra-package imports form a DAG: `app_settings`/`utils` → `encoding` → `models` → `config` → `fieldlogger` → `managers`/`signals` (`apps` imports `signals` inside `ready()`). Keep it acyclic; no `TYPE_CHECKING` imports. Read raw settings via `app_settings.get_settings`, not `config`.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation.
 - Supports Python 3.8+ and Django 3.1–6.1: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`).

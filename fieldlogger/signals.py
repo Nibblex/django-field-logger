@@ -49,6 +49,7 @@ def post_save_log_fields(
     created: bool,
     update_fields: Optional[FrozenSet[str]],
     raw: bool = False,
+    using: Optional[str] = None,
     **kwargs: Any,
 ) -> None:
     """Log the changed fields and clean up the stashed pre-save state."""
@@ -56,7 +57,7 @@ def post_save_log_fields(
         # Fixture loading is a restore, not a change worth logging.
         return
 
-    log_fields(sender, [instance], update_fields or frozenset())
+    log_fields(sender, [instance], update_fields or frozenset(), using=using)
 
     if hasattr(instance, PRE_INSTANCE_ATTR):
         delattr(instance, PRE_INSTANCE_ATTR)
