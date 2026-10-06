@@ -28,6 +28,10 @@ _CONVERSION_FIELDS = frozenset(
 )
 
 
+# Logged values; written once, when the log is created.
+_IMMUTABLE_FIELDS = frozenset(["old_value", "new_value"])
+
+
 def _fetch_related(field: models.ForeignKey, pk: Any) -> models.Model:
     """Fetch the related instance of a logged foreign key value.
 
@@ -72,6 +76,32 @@ class FieldLog(models.Model):
             f"({self.app_label}__{self.model_name}__{self.field}, "
             f"created={self.created}) {self.old_value} -> {self.new_value}"
         )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Save the log, never rewriting the logged values of an existing one.
+
+        ``old_value``/``new_value`` hold converted objects once loaded (e.g.
+        a related instance for a foreign key), which Django refuses to write
+        to a JSON column. A log is immutable once created, so saving an
+        existing log without ``update_fields`` (e.g. after changing
+        ``extra_data`` in a callback) only writes the other loaded fields.
+        Pass ``update_fields`` explicitly to override this.
+        """
+        if (
+            not args
+            and kwargs.get("update_fields") is None
+            and not kwargs.get("force_insert")
+            and not self._state.adding
+        ):
+            deferred = self.get_deferred_fields()
+            kwargs["update_fields"] = [
+                field.attname
+                for field in self._meta.concrete_fields
+                if not field.primary_key
+                and field.name not in _IMMUTABLE_FIELDS
+                and field.attname not in deferred
+            ]
+        super().save(*args, **kwargs)
 
     @staticmethod
     def from_db_field(field: models.Field, value: Any) -> Any:
