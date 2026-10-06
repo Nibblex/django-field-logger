@@ -4,6 +4,7 @@ from json import JSONDecoder, JSONEncoder
 
 import pytest
 from django.conf import settings
+from django.core.files.base import ContentFile
 
 from fieldlogger import encoding
 
@@ -24,6 +25,14 @@ class TestEncoder:
         related_instance = TestModelRelated.objects.create()
         encoded = encoding.Encoder().default(TestModelRelated.objects.all())
         assert encoded == [related_instance.pk]
+
+    @pytest.mark.django_db
+    def test_model_instance_encodes_as_pk(self):
+        related_instance = TestModelRelated.objects.create()
+        assert encoding.Encoder().default(related_instance) == related_instance.pk
+
+    def test_file_encodes_as_name(self):
+        assert encoding.Encoder().default(ContentFile(b"x", name="a.txt")) == "a.txt"
 
     def test_unsupported_type_raises_type_error(self):
         with pytest.raises(TypeError):

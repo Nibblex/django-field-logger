@@ -123,6 +123,11 @@ How it works?
    many-to-many field.
 -  For each field specified in the configuration variable, creates a
    record in the ``FieldLog`` model for each instance update.
+-  The logged values are read back from the database after saving, so
+   they are the stored ones: expressions such as ``F('count') + 1`` are
+   logged as their result, and values the database rounds or converts
+   (e.g. a ``DecimalField``) as stored. This costs one extra query per
+   ``save()``, and per batch in bulk operations.
 -  Fixture loading (``loaddata``) is a restore, not a change, so it is
    never logged.
 
