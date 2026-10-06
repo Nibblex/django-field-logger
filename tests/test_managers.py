@@ -5,6 +5,7 @@ from .testapp.models import SoftDeleteModel, TestModel
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.usefixtures("supports_ignore_conflicts")
 def test_bulk_create_ignore_conflicts_skips_conflicting_rows():
     """Rows not inserted because of a conflict must not be logged."""
     TestModel.objects.create(test_unique_field="dup")
@@ -43,6 +44,7 @@ def test_bulk_update_accepts_a_generator():
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.usefixtures("supports_ignore_conflicts")
 def test_bulk_create_ignore_conflicts_with_filtering_default_manager():
     """A new row must not get the pk of a hidden row; with
     ``ignore_conflicts`` that collision would silently drop it."""
@@ -77,8 +79,9 @@ def test_bulk_create_logs_without_pk_returning_support(no_returning_pks):
 def test_inserts_after_manual_primary_keys_get_new_keys(kwargs, returning, request):
     """Explicit keys do not advance the sequence on PostgreSQL and Oracle;
     without resetting it, the next insert reused them."""
-    if not returning:
-        request.getfixturevalue("no_returning_pks")
+    request.getfixturevalue(
+        "supports_ignore_conflicts" if returning else "no_returning_pks"
+    )
     # Brings the table's highest key level with its sequence, which the
     # rows of earlier tests may have left ahead.
     TestModel.objects.create(test_char_field="existing")
