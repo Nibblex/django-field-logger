@@ -3,12 +3,13 @@
 import logging
 from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
 
-from django.db import connections, router, transaction
-from django.db.models import ManyToManyField, Max, Model
+from django.db import router, transaction
+from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
 
 from .config import get_config, through_model
+from .db import db_supports_returning_pks
 from .models import Callback, FieldLog
 
 # Logs created in a single operation, keyed by instance pk and field name.
@@ -22,41 +23,22 @@ PRE_INSTANCE_ATTR = "_fieldlogger_pre_instance"
 PRE_M2M_ATTR = "_fieldlogger_pre_m2m"
 
 
-def db_supports_returning_pks(
-    model_class: Type[Model], using: Optional[str] = None
-) -> bool:
-    """Return whether the database that ``model_class`` writes to sets
-    primary keys on bulk-created objects.
+def _save_logs(field_logs: Sequence[FieldLog]) -> None:
+    """Insert ``field_logs``, setting their primary keys.
 
-    Backends without this capability need primary keys to be assigned
-    manually with ``set_primary_keys`` before calling ``bulk_create``.
+    Callbacks receive the logs and may save them or follow
+    ``previous_log``, so they need their keys. Where ``bulk_create`` does
+    not set them, each log is inserted on its own so the database assigns
+    it, without guessing keys or bypassing the table's sequence.
     """
-    using = using or router.db_for_write(model_class)
-    return connections[using].features.can_return_rows_from_bulk_insert
+    using = router.db_for_write(FieldLog)
+    if db_supports_returning_pks(FieldLog, using):
+        FieldLog.objects.using(using).bulk_create(field_logs)
+        return
 
-
-def set_primary_keys(
-    objs: Sequence[Model], model_class: Type[Model], using: Optional[str] = None
-) -> None:
-    """Assign sequential primary keys to ``objs`` before a bulk insert.
-
-    Needed on databases that cannot return primary keys from bulk inserts
-    (see ``db_supports_returning_pks``). Objects that already have a
-    primary key are left untouched.
-
-    Note that concurrent bulk inserts may compute the same starting key;
-    callers that need concurrency must serialize these operations.
-    """
-    using = using or router.db_for_write(model_class)
     with transaction.atomic(using=using):
-        next_pk = (
-            model_class._base_manager.using(using).aggregate(max_pk=Max("pk"))["max_pk"]
-            or 0
-        )
-        for obj in objs:
-            if obj.pk is None:
-                next_pk += 1
-                obj.pk = next_pk
+        for field_log in field_logs:
+            field_log.save(using=using, force_insert=True)
 
 
 def _stored_value(row: Model, field: Field) -> Any:
@@ -129,9 +111,7 @@ def _log_fields(
             logs.setdefault(instance.pk, {})[field.name] = field_log
 
     if field_logs_to_create:
-        if not db_supports_returning_pks(FieldLog):
-            set_primary_keys(field_logs_to_create, FieldLog)
-        FieldLog.objects.bulk_create(field_logs_to_create)
+        _save_logs(field_logs_to_create)
 
         # Give callbacks the same values as a log loaded from the database
         # (e.g. related instances instead of raw foreign key values).
@@ -264,9 +244,7 @@ def log_m2m_fields(
     if not field_logs_to_create:
         return logs
 
-    if not db_supports_returning_pks(FieldLog):
-        set_primary_keys(field_logs_to_create, FieldLog)
-    FieldLog.objects.bulk_create(field_logs_to_create)
+    _save_logs(field_logs_to_create)
 
     if run_callbacks:
         instances = model_class._base_manager.using(using).filter(pk__in=list(logs))

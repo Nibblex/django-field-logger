@@ -87,6 +87,10 @@ env_list = py{314,313,312}-django{61,60}
            py{312,311,310,39,38}-django{40}
            py{310,39,38}-django{32}
            py{39,38}-django{31}
+# PostgreSQL envs need a running server (PG* variables, see tests/settings.py),
+# so they are not in env_list: run them with `tox -m postgres`.
+labels =
+    postgres = postgres-django{61,52,42}
 
 [testenv]
 deps =
@@ -104,6 +108,13 @@ deps =
     django40: Django>=4.0,<4.1
     django32: Django>=3.2,<3.3
     django31: Django>=3.1,<3.2
+    postgres: psycopg[binary]
+base_python =
+    postgres: python3.13
+set_env =
+    postgres: TEST_DB = postgres
+pass_env =
+    postgres: PGHOST, PGPORT, PGUSER, PGPASSWORD
 
 commands = pytest -q --cov --cov-report=xml
 allowlist_externals = pytest
