@@ -1,4 +1,5 @@
-"""Primary key handling for bulk inserts across database backends.
+"""Database backend differences: query size limits and primary keys of
+bulk inserts.
 
 ``bulk_create`` sets the primary keys of the inserted objects only on
 backends that can return them (PostgreSQL, MariaDB, SQLite >= 3.35), and
@@ -6,11 +7,37 @@ never with ``ignore_conflicts``. Logs need those keys to reference their
 instances, so where Django does not set them they are assigned here.
 """
 
-from typing import Optional, Sequence, Type
+from typing import Iterator, List, Optional, Sequence, Type, TypeVar
 
 from django.core.management.color import no_style
 from django.db import connections, router, transaction
 from django.db.models import Max, Model
+from django.db.models.fields import Field
+
+_T = TypeVar("_T")
+
+
+def batches(
+    values: Sequence[_T],
+    fields: Sequence[Field],
+    using: Optional[str] = None,
+    max_size: Optional[int] = None,
+) -> Iterator[List[_T]]:
+    """Split ``values`` into chunks that fit in one query.
+
+    ``fields`` are the fields each value contributes a parameter for (one
+    for a ``field__in`` lookup, several when every value is matched on
+    many fields). The size comes from the backend (``bulk_batch_size``):
+    a single chunk where queries have no parameter limit (PostgreSQL,
+    MySQL), several on SQLite (999 parameters before 3.32) or Oracle.
+    ``max_size`` caps it for limits that do not depend on parameters.
+    """
+    using = using or router.db_for_write(fields[0].model)
+    size = max(connections[using].ops.bulk_batch_size(list(fields), values), 1)
+    if max_size is not None:
+        size = min(size, max_size)
+    for start in range(0, len(values), size):
+        yield list(values[start : start + size])
 
 
 def db_supports_returning_pks(

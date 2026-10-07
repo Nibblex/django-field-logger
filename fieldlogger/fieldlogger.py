@@ -9,7 +9,7 @@ from django.db.models.fields.files import FieldFile
 
 from .callbacks import Logs, invoke_callbacks
 from .config import get_config, through_model
-from .db import db_supports_returning_pks
+from .db import batches, db_supports_returning_pks
 from .models import FieldLog
 
 # Attributes where the pre-change state of an instance is stashed between
@@ -180,13 +180,16 @@ def m2m_pks(
     target = field.m2m_reverse_field_name()
 
     state: Dict[Any, Set[Any]] = {pk: set() for pk in instance_pks}
-    rows = (
-        through._base_manager.using(using)
-        .filter(**{f"{source}__in": list(state)})
-        .values_list(source, target)
-    )
-    for source_pk, target_pk in rows:
-        state[source_pk].add(target_pk)
+    # A foreign key of the through model, never a reverse relation.
+    source_field = cast(Field, through._meta.get_field(source))
+    for batch in batches(list(state), [source_field], using):
+        rows = (
+            through._base_manager.using(using)
+            .filter(**{f"{source}__in": batch})
+            .values_list(source, target)
+        )
+        for source_pk, target_pk in rows:
+            state[source_pk].add(target_pk)
 
     return state
 
@@ -234,7 +237,12 @@ def log_m2m_fields(
     _save_logs(field_logs_to_create)
 
     if run_callbacks:
-        instances = model_class._base_manager.using(using).filter(pk__in=list(logs))
+        pk_field = model_class._meta.pk
+        instances = [
+            instance
+            for batch in batches(list(logs), [pk_field], using)
+            for instance in model_class._base_manager.using(using).filter(pk__in=batch)
+        ]
         invoke_callbacks(
             instances,
             logging_config["callbacks"],
