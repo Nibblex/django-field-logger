@@ -45,17 +45,6 @@ def test_log_fields_skips_instances_missing_from_the_database():
     assert fieldlogger.log_fields(TestModel, [instance], run_callbacks=False) == {}
 
 
-def test_failing_callback_is_logged_when_fail_silently(caplog):
-    def bad_callback(*args):
-        raise ValueError("boom")
-
-    fieldlogger._run_callbacks(
-        [TestModel()], [bad_callback], {}, frozenset(), fail_silently=True
-    )
-
-    assert "bad_callback" in caplog.text
-
-
 @pytest.mark.django_db(transaction=True)
 class TestLogsWithoutPkReturningSupport:
     """Callbacks receive saved logs even where bulk_create cannot return

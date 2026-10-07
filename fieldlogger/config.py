@@ -15,7 +15,7 @@ from django.db.models.fields import Field
 from django.utils.module_loading import import_string
 
 from .app_settings import get_settings
-from .models import Callback
+from .callbacks import Callback
 
 # Django >= 5.0 only; None on older versions.
 GENERATED_FIELD = getattr(models, "GeneratedField", None)

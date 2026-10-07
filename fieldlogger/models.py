@@ -1,8 +1,8 @@
-"""The ``FieldLog`` model and the ``Callback`` type alias."""
+"""The ``FieldLog`` model."""
 
 from base64 import b64decode
 from functools import cached_property
-from typing import Any, Callable, Collection, Dict, FrozenSet, Optional, Type, cast
+from typing import Any, Collection, Optional, Type, cast
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
@@ -202,8 +202,3 @@ class FieldLog(models.Model):
             .order_by("-pk")
             .first()
         )
-
-
-# Signature of the callback functions run after logging an instance:
-# (instance, logging_fields, logs keyed by field name) -> None
-Callback = Callable[[models.Model, FrozenSet[models.Field], Dict[str, FieldLog]], None]

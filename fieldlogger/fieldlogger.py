@@ -1,6 +1,5 @@
 """Core logging logic: detect field changes and create ``FieldLog`` records."""
 
-import logging
 from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
 
 from django.db import connections, router, transaction
@@ -8,14 +7,10 @@ from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
 
+from .callbacks import Logs, invoke_callbacks
 from .config import get_config, through_model
 from .db import db_supports_returning_pks
-from .models import Callback, FieldLog
-
-# Logs created in a single operation, keyed by instance pk and field name.
-Logs = Dict[Any, Dict[str, FieldLog]]
-
-logger = logging.getLogger(__name__)
+from .models import FieldLog
 
 # Attributes where the pre-change state of an instance is stashed between
 # the "pre" and "post" signals (or around a bulk update).
@@ -134,27 +129,6 @@ def _log_fields(
     return logs
 
 
-def _run_callbacks(
-    instances: Iterable[Model],
-    callbacks: Iterable[Callback],
-    logs: Logs,
-    logging_fields: FrozenSet[Field],
-    fail_silently: bool = False,
-) -> None:
-    """Invoke every callback for every instance with its created logs."""
-    for instance in instances:
-        instance_logs = logs.get(instance.pk, {})
-        for callback in callbacks:
-            try:
-                callback(instance, logging_fields, instance_logs)
-            except Exception:
-                if not fail_silently:
-                    raise
-                logger.exception(
-                    "Field logger callback %r failed for %r", callback, instance
-                )
-
-
 def log_fields(
     sender: Type[Model],
     instances: Iterable[Model],
@@ -185,7 +159,7 @@ def log_fields(
     logs = _log_fields(sender, instances, logging_fields, using)
 
     if run_callbacks:
-        _run_callbacks(
+        invoke_callbacks(
             instances,
             logging_config["callbacks"],
             logs,
@@ -261,7 +235,7 @@ def log_m2m_fields(
 
     if run_callbacks:
         instances = model_class._base_manager.using(using).filter(pk__in=list(logs))
-        _run_callbacks(
+        invoke_callbacks(
             instances,
             logging_config["callbacks"],
             logs,
