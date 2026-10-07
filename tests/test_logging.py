@@ -68,7 +68,9 @@ class TestScopedSettings:
 
 
 @pytest.fixture
-def test_instances(log_fields, run_callbacks, ignore_conflicts):
+def test_instances(log_fields, run_callbacks, ignore_conflicts, request):
+    if ignore_conflicts:
+        request.getfixturevalue("supports_ignore_conflicts")
     related_instance = TestModelRelated.objects.create()
 
     return TestModel.objects.bulk_create(

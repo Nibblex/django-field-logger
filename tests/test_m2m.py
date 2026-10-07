@@ -131,11 +131,7 @@ def test_receiver_ignores_post_without_pre_state(instance):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_m2m_logs_without_pk_returning_support(monkeypatch, instance, related):
-    monkeypatch.setattr(
-        fieldlogger, "db_supports_returning_pks", lambda *args, **kwargs: False
-    )
-
+def test_m2m_logs_without_pk_returning_support(no_returning_pks, instance, related):
     instance.test_many_to_many_field.add(related[0])
 
     log = m2m_logs(instance).get()

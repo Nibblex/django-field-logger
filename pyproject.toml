@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-field-logger"
-version = "0.4.3"
+version = "0.4.4"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
 license = {text = "MIT"}
@@ -87,6 +87,16 @@ env_list = py{314,313,312}-django{61,60}
            py{312,311,310,39,38}-django{40}
            py{310,39,38}-django{32}
            py{39,38}-django{31}
+# Envs for other database servers need a running server (DB_* variables,
+# see tests/settings.py), so they are not in env_list: run them with
+# `tox -m <backend>` (postgres, mysql, mariadb, oracle) or `tox -m servers`.
+labels =
+    postgres = postgres-django{61,52,42}
+    mysql = mysql-django{61,52,42}
+    mariadb = mariadb-django{61,52,42}
+    # Django supports oracledb (no Oracle client libraries) from 5.0.
+    oracle = oracle-django{61,52}
+    servers = {postgres,mysql,mariadb}-django{61,52,42}, oracle-django{61,52}
 
 [testenv]
 deps =
@@ -104,6 +114,25 @@ deps =
     django40: Django>=4.0,<4.1
     django32: Django>=3.2,<3.3
     django31: Django>=3.1,<3.2
+    postgres: psycopg[binary]
+    mysql,mariadb: PyMySQL
+    oracle: oracledb
+base_python =
+    postgres,mysql,mariadb,oracle: python3.13
+set_env =
+    postgres: TEST_DB = postgres
+    mysql: TEST_DB = mysql
+    mariadb: TEST_DB = mariadb
+    oracle: TEST_DB = oracle
+    # The 100% coverage gate is enforced by the SQLite matrix; some paths
+    # cannot run on every backend (e.g. ignore_conflicts on Oracle).
+    postgres,mysql,mariadb,oracle: PYTEST_ADDOPTS = --cov-fail-under=0
+pass_env =
+    DB_HOST
+    DB_PORT
+    DB_USER
+    DB_PASSWORD
+    DB_NAME
 
 commands = pytest -q --cov --cov-report=xml
 allowlist_externals = pytest
