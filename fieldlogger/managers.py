@@ -5,7 +5,7 @@ from typing import Any, Iterable, List, Optional, Sequence, TypeVar
 from django.db import models
 
 from .config import get_config
-from .db import db_supports_returning_pks, reset_sequences, set_primary_keys
+from .db import batches, db_supports_returning_pks, reset_sequences, set_primary_keys
 from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
 
@@ -49,11 +49,14 @@ class FieldLoggerManager(models.Manager[_M]):
             logged_objs = objs
             if kwargs.get("ignore_conflicts", False):
                 # Rows that conflicted were not inserted; do not log them.
-                inserted_pks = set(
-                    self.model._base_manager.using(self.db)
-                    .filter(pk__in=[obj.pk for obj in objs])
+                pks = [obj.pk for obj in objs]
+                inserted_pks = {
+                    pk
+                    for batch in batches(pks, [self.model._meta.pk], self.db)
+                    for pk in self.model._base_manager.using(self.db)
+                    .filter(pk__in=batch)
                     .values_list("pk", flat=True)
-                )
+                }
                 logged_objs = [obj for obj in objs if obj.pk in inserted_pks]
 
             _log_fields(
