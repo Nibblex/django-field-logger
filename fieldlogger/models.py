@@ -10,7 +10,7 @@ from django.db import models
 from django.utils.functional import SimpleLazyObject
 from django.utils.translation import gettext_lazy as _
 
-from .encoding import DECODER, ENCODER
+from .encoding import Decoder, Encoder
 from .utils import getrmodel
 
 # Fields needed by ``FieldLog.from_db`` to convert raw values; if any of
@@ -55,12 +55,12 @@ class FieldLog(models.Model):
     field = models.CharField(_("field name"), max_length=100, editable=False)
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
     old_value = models.JSONField(
-        encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
+        encoder=Encoder, decoder=Decoder, blank=True, null=True, editable=False
     )
     new_value = models.JSONField(
-        encoder=ENCODER, decoder=DECODER, blank=True, null=True, editable=False
+        encoder=Encoder, decoder=Decoder, blank=True, null=True, editable=False
     )
-    extra_data = models.JSONField(encoder=ENCODER, decoder=DECODER, default=dict)
+    extra_data = models.JSONField(encoder=Encoder, decoder=Decoder, default=dict)
     created = models.BooleanField(default=False, editable=False)
 
     class Meta:

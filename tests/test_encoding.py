@@ -1,22 +1,18 @@
+import os
+import subprocess
+import sys
 from base64 import b64encode
-from importlib import reload
-from json import JSONDecoder, JSONEncoder
+from pathlib import Path
 
+import django
 import pytest
-from django.conf import settings
 from django.core.files.base import ContentFile
 
 from fieldlogger import encoding
+from fieldlogger.models import FieldLog
 
+from .custom_codec import Point, PointDecoder, PointEncoder
 from .testapp.models import TestModelRelated
-
-
-class CustomEncoder(JSONEncoder):
-    pass
-
-
-class CustomDecoder(JSONDecoder):
-    pass
 
 
 class TestEncoder:
@@ -43,18 +39,78 @@ class TestEncoder:
         assert encoding.Encoder().default(raw) == b64encode(raw).decode("ascii")
 
 
-def test_encoder_and_decoder_are_configurable():
-    settings.FIELD_LOGGER_SETTINGS["ENCODER"] = "tests.test_encoding.CustomEncoder"
-    settings.FIELD_LOGGER_SETTINGS["DECODER"] = "tests.test_encoding.CustomDecoder"
+@pytest.fixture
+def custom_codec(settings):
+    settings.FIELD_LOGGER_SETTINGS = {
+        **settings.FIELD_LOGGER_SETTINGS,
+        "ENCODER": "tests.custom_codec.PointEncoder",
+        "DECODER": "tests.custom_codec.PointDecoder",
+    }
 
-    try:
-        reload(encoding)
-        assert encoding.ENCODER is CustomEncoder
-        assert encoding.DECODER is CustomDecoder
-    finally:
-        del settings.FIELD_LOGGER_SETTINGS["ENCODER"]
-        del settings.FIELD_LOGGER_SETTINGS["DECODER"]
-        reload(encoding)
 
-    assert encoding.ENCODER is encoding.Encoder
-    assert encoding.DECODER is encoding.Decoder
+def test_default_classes_without_settings():
+    assert type(encoding.Encoder()) is encoding.Encoder
+    assert type(encoding.Decoder()) is encoding.Decoder
+
+
+@pytest.mark.usefixtures("custom_codec")
+def test_configured_classes_stand_in_for_the_defaults():
+    """Read at use: overriding the settings needs no restart or reload."""
+    assert type(encoding.Encoder(sort_keys=True)) is PointEncoder
+    assert encoding.Encoder(sort_keys=True).sort_keys
+    assert type(encoding.Decoder()) is PointDecoder
+    # Subclasses of Encoder are instantiated as themselves.
+    assert type(PointEncoder()) is PointEncoder
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("custom_codec")
+def test_configured_classes_are_used_by_fieldlog():
+    log = FieldLog.objects.create(
+        app_label="testapp",
+        model_name="testmodel",
+        instance_id="1",
+        field="f",
+        extra_data={"point": Point(1, 2)},
+    )
+
+    assert FieldLog.objects.get(pk=log.pk).extra_data == {"point": Point(1, 2)}
+
+
+@pytest.mark.skipif(
+    django.VERSION < (3, 2),
+    reason="Django 3.1 ignores AppConfig.default_auto_field, so the app "
+    "always has a pending migration for its id there",
+)
+def test_configured_classes_do_not_change_migrations(tmp_path):
+    """The JSON fields always reference Encoder/Decoder: configuring other
+    classes used to make makemigrations write a migration into the
+    installed package."""
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        # pytest-cov measures subprocesses through these variables; the
+        # child would report its own files with a wider source.
+        if not name.startswith("COV_CORE_") and name != "COVERAGE_PROCESS_START"
+    }
+    env["PYTHONPATH"] = str(Path(__file__).parent.parent)
+    env.pop("TEST_DB", None)  # SQLite, created in tmp_path.
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "django",
+            "makemigrations",
+            "fieldlogger",
+            "--check",
+            "--dry-run",
+            "--settings=tests.settings_custom_codec",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
