@@ -24,7 +24,7 @@ from django.db.models import Q
 from django.db.models.fields import Field
 
 from .config import get_config
-from .db import batches, db_supports_returning_pks, reset_sequences, set_primary_keys
+from .db import batches, db_supports_returning_pks, reserve_primary_keys
 from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
 
@@ -207,12 +207,9 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
             else ignore_conflicts or not returning
         )
         if manual_pks:
-            set_primary_keys(new_objs, self.model, using=self.db)
+            reserve_primary_keys(new_objs, self.model, using=self.db)
 
         res = super().bulk_create(objs, **kwargs)
-
-        if manual_pks:
-            reset_sequences(self.model, using=self.db)
 
         inserted = new_objs
         if ignore_conflicts and (log_fields or manual_pks):
