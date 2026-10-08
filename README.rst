@@ -294,7 +294,19 @@ both methods to log field changes as well:
 
         objects = FieldLoggerManager()
 
-Both methods accept two extra keyword arguments:
+The methods are defined on ``FieldLoggerQuerySet``, the QuerySet the
+manager returns, so they are also logged after chained calls such as
+``Driver.objects.using('other').bulk_create(...)`` or
+``Driver.objects.filter(...).bulk_update(...)``, and through their
+async variants ``abulk_create`` and ``abulk_update`` (available on the
+manager from Django 4.1, on the QuerySet on every version).
+
+Your own QuerySet keeps logging: ``FieldLoggerManager.from_queryset(YourQuerySet)``,
+and a ``FieldLoggerManager`` subclass whose ``get_queryset()`` returns
+another QuerySet, both combine it with ``FieldLoggerQuerySet``. You can
+also subclass ``FieldLoggerQuerySet`` and use ``YourQuerySet.as_manager()``.
+
+All of them accept two extra keyword arguments:
 
 -  ``log_fields`` set it to ``False`` to skip logging for that call
    (default: ``True``).
@@ -305,6 +317,12 @@ Both methods accept two extra keyword arguments:
 
     Driver.objects.bulk_create([Driver(driver_name='John Doe')])
     Driver.objects.bulk_update(drivers, ['driver_name'], run_callbacks=False)
+
+With ``bulk_create(update_conflicts=True)``, objects that update an
+existing row are logged as changes of the ``update_fields`` instead of
+as creations.
+
+``QuerySet.update()`` does not fire signals and is not logged.
 
 Many-to-many fields
 ~~~~~~~~~~~~~~~~~~~
