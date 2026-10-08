@@ -7,10 +7,10 @@ never with ``ignore_conflicts``. Logs need those keys to reference their
 instances, so where Django does not set them they are assigned here.
 """
 
-from typing import Iterator, List, Optional, Sequence, Type, TypeVar
+from typing import Any, Iterator, List, Optional, Sequence, Tuple, Type, TypeVar
 
-from django.core.management.color import no_style
-from django.db import connections, router, transaction
+from django.db import connections, router
+from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models import Max, Model
 from django.db.models.fields import Field
 
@@ -49,39 +49,72 @@ def db_supports_returning_pks(
     return connections[using].features.can_return_rows_from_bulk_insert
 
 
-def set_primary_keys(
+def _nextval_sql(
+    connection: BaseDatabaseWrapper, sequence: str, count: int
+) -> Optional[Tuple[str, List[Any]]]:
+    """Query returning ``count`` values of ``sequence``, on backends whose
+    primary keys come from a named sequence; None elsewhere."""
+    name = connection.ops.quote_name(sequence)
+    if connection.vendor == "postgresql":
+        return "SELECT nextval(%s) FROM generate_series(1, %s)", [name, count]
+    if connection.vendor == "oracle":
+        return f"SELECT {name}.NEXTVAL FROM DUAL CONNECT BY LEVEL <= %s", [count]
+    return None
+
+
+def _reserve_from_sequence(
+    model_class: Type[Model], using: str, count: int
+) -> Optional[List[Any]]:
+    """Take ``count`` values from the sequence of the primary key of
+    ``model_class``, or None if it has none (SQLite, MySQL)."""
+    connection = connections[using]
+    column = model_class._meta.pk.column
+    with connection.cursor() as cursor:
+        try:
+            sequences = connection.introspection.get_sequences(
+                cursor, model_class._meta.db_table
+            )
+        except NotImplementedError:
+            # Third-party backends without sequence introspection.
+            return None
+        name = next(
+            (seq.get("name") for seq in sequences if seq["column"] == column), None
+        )
+        query = _nextval_sql(connection, name, count) if name else None
+        if query is None:
+            return None
+        cursor.execute(*query)
+        return [row[0] for row in cursor.fetchall()]
+
+
+def reserve_primary_keys(
     objs: Sequence[Model], model_class: Type[Model], using: Optional[str] = None
 ) -> None:
-    """Assign sequential primary keys to ``objs`` before a bulk insert.
+    """Assign primary keys to ``objs`` before a bulk insert. Objects that
+    already have one are left untouched.
 
-    Objects that already have a primary key are left untouched. Call
-    ``reset_sequences`` after the insert: explicit keys do not advance the
-    sequence on PostgreSQL and Oracle, so later inserts would reuse them.
-
-    Concurrent bulk inserts may compute the same starting key; callers that
-    need concurrency must serialize these operations.
+    On PostgreSQL and Oracle the keys are taken from the primary key's
+    sequence: they are reserved, so no other insert, concurrent or later,
+    gets them, and the sequence needs no reset afterwards. Elsewhere
+    (SQLite, MySQL, whose auto-increment counters follow explicit keys)
+    they continue from the highest key in the table; concurrent bulk
+    inserts may then compute the same keys, so callers that need
+    concurrency there must serialize these operations.
     """
     using = using or router.db_for_write(model_class)
-    with transaction.atomic(using=using):
-        next_pk = (
+    unsaved = [obj for obj in objs if obj.pk is None]
+    if not unsaved:
+        return
+
+    reserved = _reserve_from_sequence(model_class, using, len(unsaved))
+    if reserved is not None:
+        keys = reserved
+    else:
+        highest = (
             model_class._base_manager.using(using).aggregate(max_pk=Max("pk"))["max_pk"]
             or 0
         )
-        for obj in objs:
-            if obj.pk is None:
-                next_pk += 1
-                obj.pk = next_pk
+        keys = list(range(highest + 1, highest + 1 + len(unsaved)))
 
-
-def reset_sequences(model_class: Type[Model], using: Optional[str] = None) -> None:
-    """Move the primary key sequence of ``model_class`` past its highest
-    key, like ``loaddata`` does after inserting rows with explicit keys.
-
-    A no-op on backends whose sequences follow explicit keys on their own
-    (SQLite, MySQL).
-    """
-    connection = connections[using or router.db_for_write(model_class)]
-    statements = connection.ops.sequence_reset_sql(no_style(), [model_class])
-    with connection.cursor() as cursor:
-        for sql in statements:
-            cursor.execute(sql)
+    for obj, key in zip(unsaved, keys):
+        obj.pk = key
