@@ -49,6 +49,12 @@ def _fetch_related(field: models.ForeignKey, pk: Any) -> models.Model:
 class FieldLog(models.Model):
     """A single change to a field of a logged model instance."""
 
+    # Declared explicitly, exactly as Django auto-creates it, because Django
+    # 3.1 ignores AppConfig.default_auto_field and would create an AutoField,
+    # out of step with the BigAutoField of the migrations.
+    id = models.BigAutoField(
+        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+    )
     app_label = models.CharField(max_length=100, editable=False)
     model_name = models.CharField(max_length=100, editable=False)
     instance_id = models.CharField(max_length=255, editable=False)
