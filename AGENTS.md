@@ -29,7 +29,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - `FieldLog`'s JSON fields always use `encoding.Encoder`/`Decoder`, whose `__new__` returns the configured `ENCODER`/`DECODER` instead; never pass the configured classes to the fields, or migrations would depend on the settings.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation.
 - Loaded `FieldLog` values are converted (FKs become lazy related instances), which Django refuses to write to a JSON column; `FieldLog.save()` therefore skips `old_value`/`new_value` on existing logs unless they are in `update_fields`.
-- Supports Python 3.8+ and Django 3.1–6.1: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`).
+- Supports Python 3.8+ and Django 3.1–6.1: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`, and `FieldLog.id`, declared because 3.1 ignores `AppConfig.default_auto_field`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
   It leaves an untracked `test_db` SQLite file in the repo root (not gitignored); delete it.
