@@ -67,7 +67,9 @@ How to set up?
    encode/decode your model instance fields, you can specify your
    encoder/decoder classes here. Your encoder/decoder classes must be
    subclasses of ``json.JSONEncoder`` and ``json.JSONDecoder``
-   respectively.
+   respectively. To keep the default handling of Django field values,
+   subclass ``fieldlogger.encoding.Encoder``. Changing them does not
+   require a migration.
 -  ``LOGGING_ENABLED`` is optional. If you want to disable logging
    globally, you can set this to ``False``.
 -  ``FAIL_SILENTLY`` is optional. If it is set to ``False``, exceptions
