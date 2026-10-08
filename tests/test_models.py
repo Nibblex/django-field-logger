@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.db import models
 
 from fieldlogger.models import FieldLog
 
@@ -183,3 +184,18 @@ class TestFieldLog:
         assert first.previous_log is None
         assert second.previous_log == first
         assert third.previous_log == second
+
+
+def test_primary_key_matches_the_migrations():
+    """A BigAutoField on every Django version: 3.1 ignored the app's
+    default_auto_field and created an AutoField, so makemigrations wanted
+    to alter the column of an installed app."""
+    pk = FieldLog._meta.pk
+    assert type(pk) is models.BigAutoField
+    assert pk.auto_created
+
+
+def test_no_auto_field_warning():
+    # The model's own checks, without the database ones (Django 6.1 runs
+    # those through run_checks).
+    assert not [w for w in FieldLog.check() if w.id == "models.W042"]

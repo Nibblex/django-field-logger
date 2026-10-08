@@ -4,7 +4,6 @@ import sys
 from base64 import b64encode
 from pathlib import Path
 
-import django
 import pytest
 from django.core.files.base import ContentFile
 
@@ -77,11 +76,6 @@ def test_configured_classes_are_used_by_fieldlog():
     assert FieldLog.objects.get(pk=log.pk).extra_data == {"point": Point(1, 2)}
 
 
-@pytest.mark.skipif(
-    django.VERSION < (3, 2),
-    reason="Django 3.1 ignores AppConfig.default_auto_field, so the app "
-    "always has a pending migration for its id there",
-)
 def test_configured_classes_do_not_change_migrations(tmp_path):
     """The JSON fields always reference Encoder/Decoder: configuring other
     classes used to make makemigrations write a migration into the
