@@ -30,12 +30,14 @@ class FieldLoggerManager(models.Manager[_M]):
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
 
+        ignore_conflicts = kwargs.get("ignore_conflicts", False)
+
         # With ignore_conflicts, or on databases that cannot return primary
-        # keys from bulk inserts, pks must be assigned manually so the logs
-        # can reference their instances.
+        # keys from bulk inserts, pks are assigned manually so the logs can
+        # reference their instances.
+        unsaved = [obj for obj in objs if obj.pk is None]
         manual_pks = isinstance(self.model._meta.pk, models.AutoField) and (
-            kwargs.get("ignore_conflicts", False)
-            or not db_supports_returning_pks(self.model, using=self.db)
+            ignore_conflicts or not db_supports_returning_pks(self.model, using=self.db)
         )
         if manual_pks:
             set_primary_keys(objs, self.model, using=self.db)
@@ -45,22 +47,28 @@ class FieldLoggerManager(models.Manager[_M]):
         if manual_pks:
             reset_sequences(self.model, using=self.db)
 
-        if log_fields:
-            logged_objs = objs
-            if kwargs.get("ignore_conflicts", False):
-                # Rows that conflicted were not inserted; do not log them.
-                pks = [obj.pk for obj in objs]
-                inserted_pks = {
-                    pk
-                    for batch in batches(pks, [self.model._meta.pk], self.db)
-                    for pk in self.model._base_manager.using(self.db)
-                    .filter(pk__in=batch)
-                    .values_list("pk", flat=True)
-                }
-                logged_objs = [obj for obj in objs if obj.pk in inserted_pks]
+        inserted = objs
+        if ignore_conflicts and (log_fields or manual_pks):
+            # Rows that conflicted were not inserted: they are not logged,
+            # and the keys assigned to them are cleared, since no row has
+            # them (saving such an object would insert with that key).
+            pks = [obj.pk for obj in objs]
+            inserted_pks = {
+                pk
+                for batch in batches(pks, [self.model._meta.pk], self.db)
+                for pk in self.model._base_manager.using(self.db)
+                .filter(pk__in=batch)
+                .values_list("pk", flat=True)
+            }
+            inserted = [obj for obj in objs if obj.pk in inserted_pks]
+            if manual_pks:
+                for obj in unsaved:
+                    if obj.pk not in inserted_pks:
+                        obj.pk = None
 
+        if log_fields:
             _log_fields(
-                self.model, logged_objs, run_callbacks=run_callbacks, using=self.db
+                self.model, inserted, run_callbacks=run_callbacks, using=self.db
             )
 
         return res

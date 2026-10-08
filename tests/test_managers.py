@@ -92,3 +92,55 @@ def test_inserts_after_manual_primary_keys_get_new_keys(kwargs, returning, reque
     created = TestModel.objects.create(test_char_field="single")
 
     assert created.pk > bulk_created.pk
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.usefixtures("supports_ignore_conflicts")
+class TestIgnoreConflictsPrimaryKeys:
+    """Objects not inserted because of a conflict must not keep a primary
+    key that no row has: saving them would insert with that key, which on
+    PostgreSQL and Oracle does not advance the sequence."""
+
+    def test_conflicting_objects_get_no_primary_key(self):
+        TestModel.objects.create(test_unique_field="dup")
+
+        conflicting = TestModel(test_unique_field="dup")
+        inserted = TestModel(test_unique_field="new")
+        TestModel.objects.bulk_create([conflicting, inserted], ignore_conflicts=True)
+
+        assert conflicting.pk is None
+        assert TestModel.objects.filter(pk=inserted.pk).exists()
+
+    def test_preset_primary_keys_are_kept(self):
+        existing = TestModel.objects.create(test_unique_field="dup")
+
+        conflicting = TestModel(pk=existing.pk, test_unique_field="other")
+        TestModel.objects.bulk_create([conflicting], ignore_conflicts=True)
+
+        assert conflicting.pk == existing.pk
+
+    def test_keys_are_cleared_without_logging_too(self):
+        """Keys are still assigned with log_fields=False (callers rely on
+        them), so they are cleared there as well."""
+        TestModel.objects.create(test_unique_field="dup")
+
+        conflicting = TestModel(test_unique_field="dup")
+        inserted = TestModel(test_unique_field="new")
+        TestModel.objects.bulk_create(
+            [conflicting, inserted], ignore_conflicts=True, log_fields=False
+        )
+
+        assert conflicting.pk is None
+        assert TestModel.objects.filter(pk=inserted.pk).exists()
+
+    def test_saving_a_conflicting_object_later_creates_a_new_row(self):
+        TestModel.objects.create(test_unique_field="dup")
+        conflicting = TestModel(test_unique_field="dup")
+        TestModel.objects.bulk_create([conflicting], ignore_conflicts=True)
+
+        conflicting.test_unique_field = "renamed"
+        conflicting.save()
+        created = TestModel.objects.create(test_char_field="next")
+
+        assert conflicting.pk is not None
+        assert created.pk > conflicting.pk
