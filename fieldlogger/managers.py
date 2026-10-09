@@ -19,7 +19,7 @@ from typing import (
 
 import django
 from asgiref.sync import sync_to_async
-from django.db import models
+from django.db import connections, models, router
 from django.db.models import Q
 from django.db.models.fields import Field
 
@@ -37,9 +37,44 @@ def _unique_field(model: Type[models.Model], name: str) -> Field:
     return model._meta.pk if name == "pk" else cast(Field, model._meta.get_field(name))
 
 
+def _unique_field_sets(model: Type[models.Model]) -> List[Tuple[Field, ...]]:
+    """Every set of fields the database keeps unique for all rows: unique
+    fields (the primary key included), ``unique_together`` and unique
+    constraints without a condition.
+
+    Constraints on expressions are skipped: their values cannot be read
+    from the objects.
+    """
+    names: List[Tuple[str, ...]] = [
+        (field.name,) for field in model._meta.concrete_fields if field.unique
+    ]
+    names += [tuple(fields) for fields in model._meta.unique_together]
+    names += [
+        tuple(constraint.fields)
+        for constraint in model._meta.total_unique_constraints
+        if constraint.fields
+    ]
+
+    sets: List[Tuple[Field, ...]] = []
+    for group in names:
+        fields = tuple(_unique_field(model, name) for name in group)
+        if fields not in sets:
+            sets.append(fields)
+    return sets
+
+
 # SQLite rejects expressions nested deeper than 1000 levels (its default
 # SQLITE_MAX_EXPR_DEPTH), and a chain of ORs nests one level per term.
 MAX_OR_TERMS = 500
+
+
+def _can_conflict(key: Tuple[Any, ...], empty_is_null: bool) -> bool:
+    """Whether a row with these unique values can conflict with another:
+    NULLs never do. Where the database stores empty strings as NULL
+    (Oracle), Django holds them as empty values, so those never do either."""
+    if None in key:
+        return False
+    return not (empty_is_null and any(value in ("", b"") for value in key))
 
 
 def _key(obj: models.Model, group: Tuple[Field, ...]) -> Tuple[Any, ...]:
@@ -70,9 +105,10 @@ def existing_rows(
 
     These are the rows that ``bulk_create(update_conflicts=True)`` updates
     instead of inserting. A row conflicts when it has the same values for
-    every field in ``unique_fields``; without them (MySQL, which upserts on
-    any unique constraint) on any single unique field. Objects with a null
-    value in the compared fields never conflict, like in the database.
+    every field in ``unique_fields``; without them (MySQL and MariaDB, which
+    upsert on any unique index) on any of the model's unique field sets.
+    Objects with a null value in the compared fields never conflict, like
+    in the database (see ``_can_conflict``).
 
     Rows are fetched with one query per batch of objects, sized to stay
     within the database's limits on query parameters and expression depth.
@@ -80,10 +116,12 @@ def existing_rows(
     groups: List[Tuple[Field, ...]] = (
         [tuple(_unique_field(model, name) for name in unique_fields)]
         if unique_fields
-        else [(field,) for field in model._meta.concrete_fields if field.unique]
+        else _unique_field_sets(model)
     )
     fields = [field for group in groups for field in group]
     multi_field = any(len(group) > 1 for group in groups)
+    connection = connections[using or router.db_for_write(model)]
+    empty_is_null = connection.features.interprets_empty_strings_as_nulls
 
     only = {field.name for field in logging_fields} | {field.name for field in fields}
     found: Dict[Tuple[Field, ...], Dict[Tuple[Any, ...], _M]] = {
@@ -95,7 +133,9 @@ def existing_rows(
         condition = Q()
         for group in groups:
             keys = {
-                key for key in (_key(obj, group) for obj in batch) if None not in key
+                key
+                for key in (_key(obj, group) for obj in batch)
+                if _can_conflict(key, empty_is_null)
             }
             if keys:
                 condition |= _match_condition(group, keys)
@@ -110,7 +150,7 @@ def existing_rows(
     for index, obj in enumerate(objs):
         for group in groups:
             key = _key(obj, group)
-            if None not in key and key in found[group]:
+            if _can_conflict(key, empty_is_null) and key in found[group]:
                 rows[index] = found[group][key]
                 break
 
