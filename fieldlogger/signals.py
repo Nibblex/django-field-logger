@@ -1,6 +1,6 @@
 """Signal receivers that log field changes on every ``save()``."""
 
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Type
+from typing import Any
 
 from django.core.signals import setting_changed
 from django.db.models import Model
@@ -17,10 +17,10 @@ from .fieldlogger import (
 
 
 def pre_save_log_fields(
-    sender: Type[Model],
+    sender: type[Model],
     instance: Model,
     raw: bool = False,
-    using: Optional[str] = None,
+    using: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Stash the current database state of the instance before saving."""
@@ -44,12 +44,12 @@ def pre_save_log_fields(
 
 
 def post_save_log_fields(
-    sender: Type[Model],
+    sender: type[Model],
     instance: Model,
     created: bool,
-    update_fields: Optional[FrozenSet[str]],
+    update_fields: frozenset[str] | None,
     raw: bool = False,
-    using: Optional[str] = None,
+    using: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Log the changed fields and clean up the stashed pre-save state."""
@@ -64,13 +64,13 @@ def post_save_log_fields(
 
 
 def m2m_changed_log_fields(
-    sender: Type[Model],
+    sender: type[Model],
     instance: Model,
     action: str,
     reverse: bool,
-    model: Type[Model],
-    pk_set: Optional[Set[Any]],
-    using: Optional[str] = None,
+    model: type[Model],
+    pk_set: set[Any] | None,
+    using: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Log changes to the configured many-to-many fields.
@@ -85,7 +85,7 @@ def m2m_changed_log_fields(
     model_class, field = m2m_config
 
     if action.startswith("pre_"):
-        affected_pks: List[Any]
+        affected_pks: list[Any]
         if not reverse:
             affected_pks = [instance.pk]
         elif pk_set is not None:
@@ -103,7 +103,7 @@ def m2m_changed_log_fields(
         setattr(instance, PRE_M2M_ATTR, m2m_pks(field, affected_pks, using))
 
     elif hasattr(instance, PRE_M2M_ATTR):
-        old_state: Dict[Any, Set[Any]] = getattr(instance, PRE_M2M_ATTR)
+        old_state: dict[Any, set[Any]] = getattr(instance, PRE_M2M_ATTR)
         delattr(instance, PRE_M2M_ATTR)
         log_m2m_fields(model_class, field, old_state, using=using)
 
