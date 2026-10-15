@@ -1,8 +1,9 @@
 """The ``FieldLog`` model."""
 
 from base64 import b64decode
+from collections.abc import Collection
 from functools import cached_property
-from typing import Any, Collection, Optional, Type, cast
+from typing import Any, cast
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
@@ -39,7 +40,7 @@ def _fetch_related(field: models.ForeignKey, pk: Any) -> models.Model:
     carrying only the primary key, so reading old logs never fails.
     """
     # Always a model class once the app registry is ready.
-    related_model = cast(Type[models.Model], field.related_model)
+    related_model = cast(type[models.Model], field.related_model)
     try:
         return related_model._base_manager.get(pk=pk)
     except ObjectDoesNotExist:
@@ -49,12 +50,6 @@ def _fetch_related(field: models.ForeignKey, pk: Any) -> models.Model:
 class FieldLog(models.Model):
     """A single change to a field of a logged model instance."""
 
-    # Declared explicitly, exactly as Django auto-creates it, because Django
-    # 3.1 ignores AppConfig.default_auto_field and would create an AutoField,
-    # out of step with the BigAutoField of the migrations.
-    id = models.BigAutoField(
-        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-    )
     app_label = models.CharField(max_length=100, editable=False)
     model_name = models.CharField(max_length=100, editable=False)
     instance_id = models.CharField(max_length=255, editable=False)
@@ -135,7 +130,7 @@ class FieldLog(models.Model):
     @classmethod
     def from_db(
         cls,
-        db: Optional[str],
+        db: str | None,
         field_names: Collection[str],
         values: Collection[Any],
         **kwargs: Any,
@@ -185,7 +180,7 @@ class FieldLog(models.Model):
         self.new_value = self.from_db_field(field, self.new_value)
 
     @cached_property
-    def model(self) -> Type[models.Model]:
+    def model(self) -> type[models.Model]:
         """The model class of the logged instance."""
         return apps.get_model(self.app_label, self.model_name)
 
@@ -195,7 +190,7 @@ class FieldLog(models.Model):
         return self.model._base_manager.get(pk=self.instance_id)
 
     @cached_property
-    def previous_log(self) -> Optional["FieldLog"]:
+    def previous_log(self) -> "FieldLog | None":
         """The previous log of the same field of the same instance, if any."""
         return (
             self.__class__.objects.filter(

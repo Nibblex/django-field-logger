@@ -95,3 +95,48 @@ class SoftDeleteModel(models.Model):
     deleted = models.BooleanField(default=False)
 
     items = SoftDeleteManager()
+
+
+class ActiveQuerySet(models.QuerySet):
+    """A user's own QuerySet, unaware of field logging."""
+
+    def active(self):
+        return self.filter(deleted=False)
+
+
+class ActiveQuerySetManager(FieldLoggerManager):
+    """Subclass that returns its own QuerySet from get_queryset()."""
+
+    def get_queryset(self):
+        return ActiveQuerySet(self.model, using=self._db)
+
+
+class CustomQuerySetModel(models.Model):
+    """Combines FieldLoggerManager with a custom QuerySet in both ways."""
+
+    name = models.CharField(max_length=32, null=True)
+    deleted = models.BooleanField(default=False)
+
+    objects = FieldLoggerManager.from_queryset(ActiveQuerySet)()
+    overridden = ActiveQuerySetManager()
+
+
+class CompositeUniqueModel(models.Model):
+    """Rows identified by composite unique constraints, which an upsert on
+    MySQL and MariaDB can conflict on without unique_fields."""
+
+    code = models.CharField(max_length=16, null=True)
+    region = models.CharField(max_length=16, null=True)
+    serial = models.CharField(max_length=16, null=True)
+    batch = models.CharField(max_length=16, null=True)
+    name = models.CharField(max_length=32, null=True)
+
+    objects = FieldLoggerManager()
+
+    class Meta:
+        unique_together = [("code", "region")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["serial", "batch"], name="testapp_composite_serial_batch"
+            ),
+        ]

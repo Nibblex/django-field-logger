@@ -1,7 +1,8 @@
 """The callbacks run after logging: their signature and how they are run."""
 
 import logging
-from typing import Any, Callable, Dict, FrozenSet, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from django.db.models import Model
 from django.db.models.fields import Field
@@ -11,21 +12,21 @@ from .models import FieldLog
 logger = logging.getLogger(__name__)
 
 # Logs created for one instance, keyed by field name.
-InstanceLogs = Dict[str, FieldLog]
+InstanceLogs = dict[str, FieldLog]
 
 # Logs created in a single operation, keyed by instance pk and field name.
-Logs = Dict[Any, InstanceLogs]
+Logs = dict[Any, InstanceLogs]
 
 # Signature of the callback functions run after logging an instance:
 # (instance, logging_fields, logs keyed by field name) -> None
-Callback = Callable[[Model, FrozenSet[Field], InstanceLogs], None]
+Callback = Callable[[Model, frozenset[Field], InstanceLogs], None]
 
 
 def invoke_callbacks(
     instances: Iterable[Model],
     callbacks: Iterable[Callback],
     logs: Logs,
-    logging_fields: FrozenSet[Field],
+    logging_fields: frozenset[Field],
     fail_silently: bool = False,
 ) -> None:
     """Invoke every callback for every instance with its created logs.

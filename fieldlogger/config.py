@@ -6,7 +6,7 @@ a per-model logging configuration, resolving the ``logging_enabled``,
 scopes.
 """
 
-from typing import Any, Dict, FrozenSet, List, Tuple, Type, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from django.apps import apps
 from django.db import models
@@ -24,20 +24,20 @@ GENERATED_FIELD = getattr(models, "GeneratedField", None)
 class ModelConfig(TypedDict):
     """Resolved logging configuration of a single model."""
 
-    logging_fields: FrozenSet[Field]
-    logging_m2m_fields: FrozenSet[models.ManyToManyField]
-    callbacks: List[Callback]
+    logging_fields: frozenset[Field]
+    logging_m2m_fields: frozenset[models.ManyToManyField]
+    callbacks: list[Callback]
     fail_silently: bool
 
 
 # Through model -> (model declaring the field, many-to-many field).
-M2MConfig = Dict[Type[Model], Tuple[Type[Model], models.ManyToManyField]]
+M2MConfig = dict[type[Model], tuple[type[Model], models.ManyToManyField]]
 
 
-def through_model(field: models.ManyToManyField) -> Type[Model]:
+def through_model(field: models.ManyToManyField) -> type[Model]:
     """Return the through model of ``field``; always resolved once the
     app registry is ready (``None`` or a string only in the stubs)."""
-    return cast(Type[Model], field.remote_field.through)
+    return cast(type[Model], field.remote_field.through)
 
 
 def _is_loggable(field: Field) -> bool:
@@ -56,8 +56,8 @@ class LoggingConfig:
     """Lazily builds and caches the per-model logging configuration."""
 
     def __init__(self) -> None:
-        self._settings: Dict[str, Any] = {}
-        self._config: Dict[Type[Model], ModelConfig] = {}
+        self._settings: dict[str, Any] = {}
+        self._config: dict[type[Model], ModelConfig] = {}
         self._m2m_config: M2MConfig = {}
         self._loaded = False
 
@@ -74,7 +74,7 @@ class LoggingConfig:
     def _fail_silently(self, *configs: dict) -> bool:
         return self._all_scopes("fail_silently", *configs)
 
-    def _callbacks(self, *configs: dict) -> List[Callback]:
+    def _callbacks(self, *configs: dict) -> list[Callback]:
         """Concatenate the callbacks of all scopes, importing dotted paths."""
         callbacks = list(self._settings.get("CALLBACKS", []))
         for config in configs:
@@ -86,8 +86,8 @@ class LoggingConfig:
         ]
 
     def _logging_fields(
-        self, model_class: Type[Model], model_settings: Dict[str, Any]
-    ) -> Tuple[FrozenSet[Field], FrozenSet[models.ManyToManyField]]:
+        self, model_class: type[Model], model_settings: dict[str, Any]
+    ) -> tuple[frozenset[Field], frozenset[models.ManyToManyField]]:
         """Resolve the ``fields``/``exclude_fields`` options to two sets of
         Field objects: regular fields and many-to-many fields."""
         fields = model_settings.get("fields", [])
@@ -148,7 +148,7 @@ class LoggingConfig:
                         field,
                     )
 
-    def get_config(self) -> Dict[Type[Model], ModelConfig]:
+    def get_config(self) -> dict[type[Model], ModelConfig]:
         """Return the per-model configuration, building it on first access."""
         if not self._loaded:
             self._build()

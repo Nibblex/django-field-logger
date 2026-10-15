@@ -1,6 +1,7 @@
 """Core logging logic: detect field changes and create ``FieldLog`` records."""
 
-from typing import Any, Dict, FrozenSet, Iterable, Optional, Sequence, Set, Type, cast
+from collections.abc import Iterable, Sequence
+from typing import Any, cast
 
 from django.db import connections, router, transaction
 from django.db.models import ManyToManyField, Model
@@ -55,10 +56,10 @@ def _stored_value(row: Model, field: Field, empty_is_null: bool) -> Any:
 
 
 def _log_fields(
-    model_class: Type[Model],
+    model_class: type[Model],
     instances: Sequence[Model],
-    logging_fields: FrozenSet[Field],
-    using: Optional[str] = None,
+    logging_fields: frozenset[Field],
+    using: str | None = None,
 ) -> Logs:
     """Create a ``FieldLog`` for every changed field of every instance.
 
@@ -130,11 +131,11 @@ def _log_fields(
 
 
 def log_fields(
-    sender: Type[Model],
+    sender: type[Model],
     instances: Iterable[Model],
-    update_fields: Optional[Iterable[str]] = None,
+    update_fields: Iterable[str] | None = None,
     run_callbacks: bool = True,
-    using: Optional[str] = None,
+    using: str | None = None,
 ) -> Logs:
     """Log field changes for ``instances`` of the ``sender`` model.
 
@@ -171,15 +172,15 @@ def log_fields(
 
 
 def m2m_pks(
-    field: ManyToManyField, instance_pks: Iterable[Any], using: Optional[str] = None
-) -> Dict[Any, Set[Any]]:
+    field: ManyToManyField, instance_pks: Iterable[Any], using: str | None = None
+) -> dict[Any, set[Any]]:
     """Return the pks currently related through ``field`` for each pk in
     ``instance_pks``, read from the through table."""
     through = through_model(field)
     source = field.m2m_field_name()
     target = field.m2m_reverse_field_name()
 
-    state: Dict[Any, Set[Any]] = {pk: set() for pk in instance_pks}
+    state: dict[Any, set[Any]] = {pk: set() for pk in instance_pks}
     # A foreign key of the through model, never a reverse relation.
     source_field = cast(Field, through._meta.get_field(source))
     for batch in batches(list(state), [source_field], using):
@@ -195,10 +196,10 @@ def m2m_pks(
 
 
 def log_m2m_fields(
-    model_class: Type[Model],
+    model_class: type[Model],
     field: ManyToManyField,
-    old_state: Dict[Any, Set[Any]],
-    using: Optional[str] = None,
+    old_state: dict[Any, set[Any]],
+    using: str | None = None,
     run_callbacks: bool = True,
 ) -> Logs:
     """Log changes to the many-to-many ``field`` of ``model_class``.

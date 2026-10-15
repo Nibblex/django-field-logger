@@ -4,7 +4,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 
 ## Environment
 
-- `.python-version` lists `3.8 … 3.13 system`; the first match (3.8) has no deps, so bare `pytest`/`tox` fail with `No module named 'django'` or a pyenv "command not found".
+- `.python-version` lists `3.10 … 3.14 system`; the first match (3.10) has no deps, so bare `pytest`/`tox` fail with `No module named 'django'` or a pyenv "command not found".
 - Dev tools (tox, pytest, ruff, pre-commit; Django 6.0) live in the pyenv virtualenv `fieldlogger`: use `~/.pyenv/versions/fieldlogger/bin/<tool>` or `pyenv shell fieldlogger`.
 - Existing tox envs under `.tox/` can be reused directly, e.g. `.tox/py313-django52/bin/python -m pytest -q`.
 
@@ -22,14 +22,15 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 ## Architecture gotchas
 
 - Config is built lazily and cached (`config.py`); signals are connected in `FieldloggerConfig.ready()` only for configured models. After changing settings at runtime: `invalidate_config()` + `connect_signals()`.
-- Save-path logging: `pre_save` stashes DB state on `instance._fieldlogger_pre_instance`, `post_save` re-reads the logged fields from the DB and diffs both (never diff in-memory values: they may be expressions or unrounded). M2M uses `m2m_changed` on the through model (`_fieldlogger_pre_m2m`). Bulk ops are logged only via `FieldLoggerManager`.
+- Save-path logging: `pre_save` stashes DB state on `instance._fieldlogger_pre_instance`, `post_save` re-reads the logged fields from the DB and diffs both (never diff in-memory values: they may be expressions or unrounded). M2M uses `m2m_changed` on the through model (`_fieldlogger_pre_m2m`). Bulk ops are logged only via `FieldLoggerQuerySet` (`managers.py`), which `FieldLoggerManager` returns; override queryset methods there, not on the manager, or chained calls (`using()`, `filter()`, async variants) bypass them. `QuerySet.update()` is not logged.
+- Version-specific code paths (e.g. `update_conflicts`, Django 4.1+) still need 100% coverage on every tox env: keep them in helpers that are unit-tested on all versions, or in single-statement expressions.
 - Intra-package imports form a DAG: `app_settings`/`utils`/`db` → `encoding` → `models` → `callbacks` → `config` → `fieldlogger` → `managers`/`signals` (`apps` imports `signals` inside `ready()`). Keep it acyclic; no `TYPE_CHECKING` imports. Read raw settings via `app_settings.get_settings`, not `config`.
 - Lookups over an unbounded list of pks (`field__in=...`) must go through `db.batches()`: SQLite before 3.32 accepts 999 parameters per query and a single huge `IN` made the user's own operation fail. `in_bulk()` already batches. Test with the `batch_size_2` fixture (`tests/test_batching.py`).
-- Primary keys of bulk inserts (`db.py`): logs are inserted one by one where `bulk_create` cannot return pks; user models get `set_primary_keys`, which must always be followed by `reset_sequences` (explicit pks do not advance PostgreSQL/Oracle sequences).
+- Primary keys of bulk inserts (`db.py`): logs are inserted one by one where `bulk_create` cannot return pks; user models get `reserve_primary_keys`, which reserves the keys from the pk sequence on PostgreSQL/Oracle (never assign explicit pks there without it: they do not advance the sequence) and falls back to `MAX(pk)` elsewhere, where concurrent bulk inserts can collide.
 - `FieldLog`'s JSON fields always use `encoding.Encoder`/`Decoder`, whose `__new__` returns the configured `ENCODER`/`DECODER` instead; never pass the configured classes to the fields, or migrations would depend on the settings.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation.
 - Loaded `FieldLog` values are converted (FKs become lazy related instances), which Django refuses to write to a JSON column; `FieldLog.save()` therefore skips `old_value`/`new_value` on existing logs unless they are in `update_fields`.
-- Supports Python 3.8+ and Django 3.1–6.1: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`, and `FieldLog.id`, declared because 3.1 ignores `AppConfig.default_auto_field`).
+- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`, pyupgrade `--py310-plus`, which leaves quoted refs alone). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
   It leaves an untracked `test_db` SQLite file in the repo root (not gitignored); delete it.

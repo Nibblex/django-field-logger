@@ -18,6 +18,14 @@ def supports_ignore_conflicts():
 
 
 @pytest.fixture
+def supports_update_conflicts():
+    """Skip the test on backends without bulk_create(update_conflicts=True)
+    (Oracle)."""
+    if not connections["default"].features.supports_update_conflicts:
+        pytest.skip("Database does not support update_conflicts")
+
+
+@pytest.fixture
 def no_returning_pks(monkeypatch):
     """Make bulk_create behave as on backends that cannot return primary
     keys from bulk inserts (MySQL, Oracle, SQLite < 3.35): Django leaves
