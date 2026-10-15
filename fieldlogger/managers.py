@@ -1,21 +1,8 @@
 """QuerySet and manager that add field logging to bulk operations."""
 
 import functools
-from typing import (
-    Any,
-    Callable,
-    Collection,
-    Dict,
-    FrozenSet,
-    Iterable,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    cast,
-)
+from collections.abc import Callable, Collection, Iterable, Sequence
+from typing import Any, TypeVar, cast
 
 import django
 from asgiref.sync import sync_to_async
@@ -31,13 +18,13 @@ from .fieldlogger import log_fields as _log_fields
 _M = TypeVar("_M", bound=models.Model)
 
 
-def _unique_field(model: Type[models.Model], name: str) -> Field:
+def _unique_field(model: type[models.Model], name: str) -> Field:
     """Resolve a ``unique_fields`` entry, which may be ``"pk"``."""
     # Django only accepts concrete fields there, never reverse relations.
     return model._meta.pk if name == "pk" else cast(Field, model._meta.get_field(name))
 
 
-def _unique_field_sets(model: Type[models.Model]) -> List[Tuple[Field, ...]]:
+def _unique_field_sets(model: type[models.Model]) -> list[tuple[Field, ...]]:
     """Every set of fields the database keeps unique for all rows: unique
     fields (the primary key included), ``unique_together`` and unique
     constraints without a condition.
@@ -45,7 +32,7 @@ def _unique_field_sets(model: Type[models.Model]) -> List[Tuple[Field, ...]]:
     Constraints on expressions are skipped: their values cannot be read
     from the objects.
     """
-    names: List[Tuple[str, ...]] = [
+    names: list[tuple[str, ...]] = [
         (field.name,) for field in model._meta.concrete_fields if field.unique
     ]
     names += [tuple(fields) for fields in model._meta.unique_together]
@@ -55,7 +42,7 @@ def _unique_field_sets(model: Type[models.Model]) -> List[Tuple[Field, ...]]:
         if constraint.fields
     ]
 
-    sets: List[Tuple[Field, ...]] = []
+    sets: list[tuple[Field, ...]] = []
     for group in names:
         fields = tuple(_unique_field(model, name) for name in group)
         if fields not in sets:
@@ -68,7 +55,7 @@ def _unique_field_sets(model: Type[models.Model]) -> List[Tuple[Field, ...]]:
 MAX_OR_TERMS = 500
 
 
-def _can_conflict(key: Tuple[Any, ...], empty_is_null: bool) -> bool:
+def _can_conflict(key: tuple[Any, ...], empty_is_null: bool) -> bool:
     """Whether a row with these unique values can conflict with another:
     NULLs never do. Where the database stores empty strings as NULL
     (Oracle), Django holds them as empty values, so those never do either."""
@@ -77,11 +64,11 @@ def _can_conflict(key: Tuple[Any, ...], empty_is_null: bool) -> bool:
     return not (empty_is_null and any(value in ("", b"") for value in key))
 
 
-def _key(obj: models.Model, group: Tuple[Field, ...]) -> Tuple[Any, ...]:
+def _key(obj: models.Model, group: tuple[Field, ...]) -> tuple[Any, ...]:
     return tuple(getattr(obj, field.attname) for field in group)
 
 
-def _match_condition(group: Tuple[Field, ...], keys: Collection[Tuple[Any, ...]]) -> Q:
+def _match_condition(group: tuple[Field, ...], keys: Collection[tuple[Any, ...]]) -> Q:
     """Condition matching rows whose ``group`` values equal any of ``keys``:
     an ``IN`` list for a single field, an OR of ANDs otherwise."""
     if len(group) == 1:
@@ -89,17 +76,19 @@ def _match_condition(group: Tuple[Field, ...], keys: Collection[Tuple[Any, ...]]
 
     condition = Q()
     for key in keys:
-        condition |= Q(**{field.attname: value for field, value in zip(group, key)})
+        condition |= Q(
+            **{field.attname: value for field, value in zip(group, key, strict=True)}
+        )
     return condition
 
 
 def existing_rows(
-    model: Type[_M],
+    model: type[_M],
     objs: Sequence[_M],
-    unique_fields: Optional[Collection[str]],
-    logging_fields: FrozenSet[Field],
-    using: Optional[str],
-) -> Dict[int, _M]:
+    unique_fields: Collection[str] | None,
+    logging_fields: frozenset[Field],
+    using: str | None,
+) -> dict[int, _M]:
     """Return the database rows that ``objs`` conflict with, keyed by the
     index of the object in ``objs``.
 
@@ -113,7 +102,7 @@ def existing_rows(
     Rows are fetched with one query per batch of objects, sized to stay
     within the database's limits on query parameters and expression depth.
     """
-    groups: List[Tuple[Field, ...]] = (
+    groups: list[tuple[Field, ...]] = (
         [tuple(_unique_field(model, name) for name in unique_fields)]
         if unique_fields
         else _unique_field_sets(model)
@@ -124,7 +113,7 @@ def existing_rows(
     empty_is_null = connection.features.interprets_empty_strings_as_nulls
 
     only = {field.name for field in logging_fields} | {field.name for field in fields}
-    found: Dict[Tuple[Field, ...], Dict[Tuple[Any, ...], _M]] = {
+    found: dict[tuple[Field, ...], dict[tuple[Any, ...], _M]] = {
         group: {} for group in groups
     }
     for batch in batches(
@@ -146,7 +135,7 @@ def existing_rows(
             for group in groups:
                 found[group][_key(row, group)] = row
 
-    rows: Dict[int, _M] = {}
+    rows: dict[int, _M] = {}
     for index, obj in enumerate(objs):
         for group in groups:
             key = _key(obj, group)
@@ -158,11 +147,11 @@ def existing_rows(
 
 
 def log_upserted(
-    model: Type[_M],
-    upserted: Iterable[Tuple[_M, _M]],
-    update_fields: Optional[Iterable[str]],
+    model: type[_M],
+    upserted: Iterable[tuple[_M, _M]],
+    update_fields: Iterable[str] | None,
     run_callbacks: bool,
-    using: Optional[str] = None,
+    using: str | None = None,
 ) -> None:
     """Log objects that ``bulk_create(update_conflicts=True)`` used to
     update existing rows, given as ``(object, previous row)`` pairs.
@@ -205,7 +194,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         log_fields: bool = True,
         run_callbacks: bool = True,
         **kwargs: Any,
-    ) -> List[_M]:
+    ) -> list[_M]:
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
         # Resolve self.db to the write database, as Django does.
@@ -291,9 +280,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         log_fields: bool = True,
         run_callbacks: bool = True,
         **kwargs: Any,
-    ) -> Optional[int]:
-        # Returns the number of updated rows; None on Django < 4.0.
-
+    ) -> int:
         # Materialized because the objects are iterated more than once.
         objs = list(objs)
         # Resolve self.db to the write database, as Django does.
@@ -339,7 +326,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         log_fields: bool = True,
         run_callbacks: bool = True,
         **kwargs: Any,
-    ) -> List[_M]:
+    ) -> list[_M]:
         return await sync_to_async(self.bulk_create)(
             objs, log_fields=log_fields, run_callbacks=run_callbacks, **kwargs
         )
@@ -351,7 +338,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         log_fields: bool = True,
         run_callbacks: bool = True,
         **kwargs: Any,
-    ) -> Optional[int]:
+    ) -> int:
         return await sync_to_async(self.bulk_update)(
             objs,
             fields,
@@ -361,7 +348,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         )
 
 
-def _with_logging(queryset_class: Type[models.QuerySet]) -> Type[models.QuerySet]:
+def _with_logging(queryset_class: type[models.QuerySet]) -> type[models.QuerySet]:
     """``queryset_class`` combined with ``FieldLoggerQuerySet``, unless it
     already is one."""
     if issubclass(queryset_class, FieldLoggerQuerySet):
@@ -387,7 +374,7 @@ class FieldLoggerManager(models.Manager[_M]):
 
     @classmethod
     def from_queryset(
-        cls, queryset_class: Type[models.QuerySet], class_name: Optional[str] = None
+        cls, queryset_class: type[models.QuerySet], class_name: str | None = None
     ) -> Any:
         return super().from_queryset(_with_logging(queryset_class), class_name)
 

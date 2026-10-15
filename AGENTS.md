@@ -4,7 +4,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 
 ## Environment
 
-- `.python-version` lists `3.8 … 3.13 system`; the first match (3.8) has no deps, so bare `pytest`/`tox` fail with `No module named 'django'` or a pyenv "command not found".
+- `.python-version` lists `3.10 … 3.14 system`; the first match (3.10) has no deps, so bare `pytest`/`tox` fail with `No module named 'django'` or a pyenv "command not found".
 - Dev tools (tox, pytest, ruff, pre-commit; Django 6.0) live in the pyenv virtualenv `fieldlogger`: use `~/.pyenv/versions/fieldlogger/bin/<tool>` or `pyenv shell fieldlogger`.
 - Existing tox envs under `.tox/` can be reused directly, e.g. `.tox/py313-django52/bin/python -m pytest -q`.
 
@@ -30,7 +30,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - `FieldLog`'s JSON fields always use `encoding.Encoder`/`Decoder`, whose `__new__` returns the configured `ENCODER`/`DECODER` instead; never pass the configured classes to the fields, or migrations would depend on the settings.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation.
 - Loaded `FieldLog` values are converted (FKs become lazy related instances), which Django refuses to write to a JSON column; `FieldLog.save()` therefore skips `old_value`/`new_value` on existing logs unless they are in `update_fields`.
-- Supports Python 3.8+ and Django 3.1–6.1: no 3.9+ syntax (ruff `target-version = "py38"`, pyupgrade `--py38-plus`), use `typing.Dict/List`, and guard version-specific Django APIs (see `GENERATED_FIELD`, `default_app_config` in `__init__.py`, and `FieldLog.id`, declared because 3.1 ignores `AppConfig.default_auto_field`).
+- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`, pyupgrade `--py310-plus`, which leaves quoted refs alone). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
   It leaves an untracked `test_db` SQLite file in the repo root (not gitignored); delete it.

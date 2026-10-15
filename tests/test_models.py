@@ -187,9 +187,8 @@ class TestFieldLog:
 
 
 def test_primary_key_matches_the_migrations():
-    """A BigAutoField on every Django version: 3.1 ignored the app's
-    default_auto_field and created an AutoField, so makemigrations wanted
-    to alter the column of an installed app."""
+    """A BigAutoField from the app's default_auto_field, whatever the
+    project's DEFAULT_AUTO_FIELD (AutoField by default before Django 6.0)."""
     pk = FieldLog._meta.pk
     assert type(pk) is models.BigAutoField
     assert pk.auto_created

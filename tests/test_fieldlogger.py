@@ -105,8 +105,7 @@ def test_logs_without_pk_returning_support_keep_the_sequence(no_returning_pks):
 @pytest.mark.parametrize("returning", [True, False])
 def test_save_logs_sets_primary_keys(monkeypatch, returning):
     """One INSERT where the backend returns keys, one per log otherwise.
-    Patched directly so both paths run on every Django version (SQLite
-    only returns keys from Django 4.0)."""
+    Patched directly so both paths run whatever the backend supports."""
     monkeypatch.setattr(fieldlogger, "db_supports_returning_pks", lambda *a: returning)
     logs = [
         FieldLog(app_label="testapp", model_name="testmodel", field="f", instance_id=i)

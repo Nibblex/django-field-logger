@@ -2,8 +2,8 @@ from django.apps import AppConfig
 
 
 class FieldloggerConfig(AppConfig):
-    # FieldLog declares its id; without this, Django >= 3.2 would warn
-    # (models.W042) since the field is marked auto_created.
+    # The id of FieldLog, as in its migrations, whatever the project's
+    # DEFAULT_AUTO_FIELD.
     default_auto_field = "django.db.models.BigAutoField"
     name = "fieldlogger"
 

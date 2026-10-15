@@ -7,7 +7,8 @@ never with ``ignore_conflicts``. Logs need those keys to reference their
 instances, so where Django does not set them they are assigned here.
 """
 
-from typing import Any, Iterator, List, Optional, Sequence, Tuple, Type, TypeVar
+from collections.abc import Iterator, Sequence
+from typing import Any, TypeVar
 
 from django.db import connections, router
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -20,9 +21,9 @@ _T = TypeVar("_T")
 def batches(
     values: Sequence[_T],
     fields: Sequence[Field],
-    using: Optional[str] = None,
-    max_size: Optional[int] = None,
-) -> Iterator[List[_T]]:
+    using: str | None = None,
+    max_size: int | None = None,
+) -> Iterator[list[_T]]:
     """Split ``values`` into chunks that fit in one query.
 
     ``fields`` are the fields each value contributes a parameter for (one
@@ -41,7 +42,7 @@ def batches(
 
 
 def db_supports_returning_pks(
-    model_class: Type[Model], using: Optional[str] = None
+    model_class: type[Model], using: str | None = None
 ) -> bool:
     """Return whether the database that ``model_class`` writes to sets
     primary keys on bulk-created objects."""
@@ -51,7 +52,7 @@ def db_supports_returning_pks(
 
 def _nextval_sql(
     connection: BaseDatabaseWrapper, sequence: str, count: int
-) -> Optional[Tuple[str, List[Any]]]:
+) -> tuple[str, list[Any]] | None:
     """Query returning ``count`` values of ``sequence``, on backends whose
     primary keys come from a named sequence; None elsewhere."""
     name = connection.ops.quote_name(sequence)
@@ -63,8 +64,8 @@ def _nextval_sql(
 
 
 def _reserve_from_sequence(
-    model_class: Type[Model], using: str, count: int
-) -> Optional[List[Any]]:
+    model_class: type[Model], using: str, count: int
+) -> list[Any] | None:
     """Take ``count`` values from the sequence of the primary key of
     ``model_class``, or None if it has none (SQLite, MySQL)."""
     connection = connections[using]
@@ -88,7 +89,7 @@ def _reserve_from_sequence(
 
 
 def reserve_primary_keys(
-    objs: Sequence[Model], model_class: Type[Model], using: Optional[str] = None
+    objs: Sequence[Model], model_class: type[Model], using: str | None = None
 ) -> None:
     """Assign primary keys to ``objs`` before a bulk insert. Objects that
     already have one are left untouched.
@@ -116,5 +117,5 @@ def reserve_primary_keys(
         )
         keys = list(range(highest + 1, highest + 1 + len(unsaved)))
 
-    for obj, key in zip(unsaved, keys):
+    for obj, key in zip(unsaved, keys, strict=True):
         obj.pk = key
