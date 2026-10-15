@@ -1,6 +1,9 @@
 .. image:: https://img.shields.io/pypi/pyversions/django-field-logger
    :target: https://www.python.org/
    :alt: PyPI - Python Version
+.. image:: https://img.shields.io/pypi/frameworkversions/django/django-field-logger
+   :target: https://www.djangoproject.com/
+   :alt: PyPI - Django Version
 .. image:: https://img.shields.io/pypi/v/django-field-logger?color=blue
    :target: https://pypi.org/project/django-field-logger/
    :alt: PyPI - Version
