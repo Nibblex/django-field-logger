@@ -46,7 +46,7 @@ How to set up?
                     'YourModel': {
                         'logging_enabled': True, # (default: True)
                         'fail_silently': True, # (default: True)
-                        'fields': ['field1', 'field2'], # (default: [])
+                        'fields': ['field1', 'field2'], # or '__all__' (default: [], no field is logged)
                         'exclude_fields': ['field3', 'field4'], # (default: [])
                         'callbacks': [
                             lambda instance, fields, logs: print(instance, fields, logs),
@@ -81,12 +81,12 @@ How to set up?
 
    -  ``models`` models to be logged.
 
-      -  ``fields`` is optional. If you want to log only specific
-         fields, you can specify them here. If you want to log all
-         fields, you can use ``__all__`` as a value.
-      -  ``exclude_fields`` is optional. If ``fields`` is not specified,
-         all fields in the model will be logged except the ones
-         specified here.
+      -  ``fields`` the fields to log: a list of field names, or
+         ``'__all__'`` to log every field. If it is not specified, no
+         field is logged.
+      -  ``exclude_fields`` is optional. Fields listed here are never
+         logged, even if they are in ``fields``. Combine it with
+         ``'fields': '__all__'`` to log every field except a few.
 
          Only fields with their own database column are loggable:
          reverse relations and database-generated fields
