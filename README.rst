@@ -38,15 +38,20 @@ How to set up?
         'DECODER': 'path.to.your.json.Decoder', # (default: None)
         'LOGGING_ENABLED': True, # (default: True)
         'FAIL_SILENTLY': True, # (default: True)
+        'LOG_ACTOR': True, # (default: True)
         'LOG_REMOTE_ADDR': True, # (default: True)
         'LOGGING_APPS': {
             'your_app': {
                 'logging_enabled': True, # (default: True)
                 'fail_silently': True, # (default: True)
+                'log_actor': True, # (default: True)
+                'log_remote_addr': True, # (default: True)
                 'models': {
                     'YourModel': {
                         'logging_enabled': True, # (default: True)
                         'fail_silently': True, # (default: True)
+                        'log_actor': True, # (default: True)
+                        'log_remote_addr': True, # (default: True)
                         'fields': ['field1', 'field2'], # or '__all__' (default: [], no field is logged)
                         'exclude_fields': ['field3', 'field4'], # (default: [])
                         'callbacks': [
@@ -79,8 +84,14 @@ How to set up?
    block of code, see `Disabling logging temporarily`_.
 -  ``FAIL_SILENTLY`` is optional. If it is set to ``False``, exceptions
    will be raised if the callback function fails.
--  ``LOG_REMOTE_ADDR`` is optional. Set it to ``False`` not to store the
-   client's IP address (see `Recording who made the change`_).
+-  ``LOG_ACTOR`` and ``LOG_REMOTE_ADDR`` are optional. Set them to
+   ``False`` not to store the user or the client's IP address (see
+   `Recording who made the change`_).
+-  ``LOGGING_ENABLED``, ``FAIL_SILENTLY``, ``LOG_ACTOR`` and
+   ``LOG_REMOTE_ADDR`` can also be set per app and per model, in
+   lowercase (``logging_enabled``, ``fail_silently``, ``log_actor``,
+   ``log_remote_addr``). Each one is on unless it is ``False`` in the
+   global settings, the app or the model.
 -  ``LOGGING_APPS`` apps to be logged.
 
    -  ``models`` models to be logged.
@@ -421,9 +432,33 @@ also decorate a function:
     with set_actor(user):
         driver.save()  # logged with this user
 
-The IP address is personal data: set ``'LOG_REMOTE_ADDR': False`` not to
-store it. It comes from ``REMOTE_ADDR``, which behind a reverse proxy is
-the proxy's address. Override ``get_remote_addr()`` to read the header
+To keep the user or the IP address out of the logs of some apps or
+models, set ``log_actor`` or ``log_remote_addr`` to ``False`` in their
+configuration, or ``LOG_ACTOR`` or ``LOG_REMOTE_ADDR`` to turn them off
+everywhere. Without ``log_actor``, ``request.user`` is not even loaded
+for those logs:
+
+.. code:: python
+
+    FIELD_LOGGER_SETTINGS = {
+        'LOGGING_APPS': {
+            'hr': {
+                'log_actor': False,  # no app model records the user
+                'models': {...},
+            },
+            'drivers': {
+                'models': {
+                    'Driver': {
+                        'fields': '__all__',
+                        'log_remote_addr': False,  # only this model skips the IP
+                    },
+                },
+            },
+        },
+    }
+
+The IP address is personal data. It comes from ``REMOTE_ADDR``, which
+behind a reverse proxy is the proxy's address. Override ``get_remote_addr()`` to read the header
 your proxy sets instead; do not read ``X-Forwarded-For`` unless your
 proxy sets it, since clients can send it with any value. Values that
 are not valid IP addresses are not stored.
