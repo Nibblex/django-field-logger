@@ -36,7 +36,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`, pyupgrade `--py310-plus`, which leaves quoted refs alone). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
-  It leaves an untracked `test_db` SQLite file in the repo root (not gitignored); delete it.
+  It leaves untracked `test_db` and `test_db_other` SQLite files in the repo root (not gitignored); delete them.
 
 ## Lint / workflow
 
