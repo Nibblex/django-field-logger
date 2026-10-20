@@ -204,7 +204,8 @@ class FieldLog(models.Model):
     def actor(self) -> models.Model | None:
         """The user who made the change, fetched from the database with
         ``get_user_model()``; ``None`` if unknown or deleted since."""
-        if self.actor_id is None:
+        # Unknown is NULL, which Oracle reads back as "".
+        if not self.actor_id:
             return None
         return get_user_model()._base_manager.filter(pk=self.actor_id).first()
 

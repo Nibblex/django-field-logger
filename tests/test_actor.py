@@ -30,7 +30,11 @@ def user():
 
 
 def actor_of(log):
-    return (log.actor_id, log.actor_username, log.remote_addr)
+    """Who made the change, with None for unknown values: Oracle reads the
+    NULL text columns back as ""."""
+    return tuple(
+        value or None for value in (log.actor_id, log.actor_username, log.remote_addr)
+    )
 
 
 def char_log(instance=None):
@@ -98,7 +102,7 @@ class TestSetActor:
         with set_actor(User(username="ghost")):
             instance = TestModel.objects.create(test_char_field="new")
 
-        assert char_log(instance).actor_id is None
+        assert actor_of(char_log(instance)) == (None, None, None)
 
     def test_long_usernames_are_truncated(self):
         # Unsaved, so the username does not have to fit the user table.
@@ -178,6 +182,8 @@ class TestSetActor:
         instance = TestModel.objects.create(test_char_field="new")
 
         assert char_log(instance).actor is None
+        # As Oracle reads it back; querying users by pk "" would raise.
+        assert FieldLog(actor_id="").actor is None
 
 
 def save_view(request):

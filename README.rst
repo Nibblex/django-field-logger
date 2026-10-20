@@ -399,6 +399,10 @@ The logs then get:
    change.
 -  ``remote_addr``: the client's IP address.
 
+Values that are not known are ``None``, except ``actor_id`` and
+``actor_username`` on Oracle, which reads empty text columns back as
+``''``: test them with ``if log.actor_id:``.
+
 There is no foreign key to the user model, so both ``actor_id`` and
 ``actor_username`` stay when the user is renamed or deleted;
 ``log.actor`` loads the user, or returns ``None`` if it was deleted.
