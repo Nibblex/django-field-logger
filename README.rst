@@ -38,6 +38,7 @@ How to set up?
         'DECODER': 'path.to.your.json.Decoder', # (default: None)
         'LOGGING_ENABLED': True, # (default: True)
         'FAIL_SILENTLY': True, # (default: True)
+        'LOG_REMOTE_ADDR': True, # (default: True)
         'LOGGING_APPS': {
             'your_app': {
                 'logging_enabled': True, # (default: True)
@@ -46,7 +47,7 @@ How to set up?
                     'YourModel': {
                         'logging_enabled': True, # (default: True)
                         'fail_silently': True, # (default: True)
-                        'fields': ['field1', 'field2'], # (default: [])
+                        'fields': ['field1', 'field2'], # or '__all__' (default: [], no field is logged)
                         'exclude_fields': ['field3', 'field4'], # (default: [])
                         'callbacks': [
                             lambda instance, fields, logs: print(instance, fields, logs),
@@ -74,19 +75,22 @@ How to set up?
    subclass ``fieldlogger.encoding.Encoder``. Changing them does not
    require a migration.
 -  ``LOGGING_ENABLED`` is optional. If you want to disable logging
-   globally, you can set this to ``False``.
+   globally, you can set this to ``False``. To disable it only for a
+   block of code, see `Disabling logging temporarily`_.
 -  ``FAIL_SILENTLY`` is optional. If it is set to ``False``, exceptions
    will be raised if the callback function fails.
+-  ``LOG_REMOTE_ADDR`` is optional. Set it to ``False`` not to store the
+   client's IP address (see `Recording who made the change`_).
 -  ``LOGGING_APPS`` apps to be logged.
 
    -  ``models`` models to be logged.
 
-      -  ``fields`` is optional. If you want to log only specific
-         fields, you can specify them here. If you want to log all
-         fields, you can use ``__all__`` as a value.
-      -  ``exclude_fields`` is optional. If ``fields`` is not specified,
-         all fields in the model will be logged except the ones
-         specified here.
+      -  ``fields`` the fields to log: a list of field names, or
+         ``'__all__'`` to log every field. If it is not specified, no
+         field is logged.
+      -  ``exclude_fields`` is optional. Fields listed here are never
+         logged, even if they are in ``fields``. Combine it with
+         ``'fields': '__all__'`` to log every field except a few.
 
          Only fields with their own database column are loggable:
          reverse relations and database-generated fields
@@ -240,6 +244,9 @@ configuration mapping. An example record is as follows:
         'new_value': 'Jane Doe',
         'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
         'created': False, # this is a boolean field, if it is True, it means that instance is a newly created instance
+        'actor_id': '7', # who made the change, see "Recording who made the change" (default: None)
+        'actor_username': 'admin', # (default: None)
+        'remote_addr': '127.0.0.1', # (default: None)
     }
 
 Additionally, ``FieldLog`` model provides the following properties:
@@ -249,6 +256,8 @@ Additionally, ``FieldLog`` model provides the following properties:
 -  ``instance``: returns the instance that is being logged.
 -  ``previous_log``: returns the previous log of the same field of the
    same instance, if any.
+-  ``actor``: returns the user who made the change, if known and not
+   deleted since.
 
 Values are stored as JSON and converted back to Python objects when a
 log is loaded:
@@ -312,7 +321,8 @@ also subclass ``FieldLoggerQuerySet`` and use ``YourQuerySet.as_manager()``.
 All of them accept two extra keyword arguments:
 
 -  ``log_fields`` set it to ``False`` to skip logging for that call
-   (default: ``True``).
+   (default: ``True``). To skip it for every operation in a block, see
+   `Disabling logging temporarily`_.
 -  ``run_callbacks`` set it to ``False`` to skip the configured
    callbacks for that call (default: ``True``).
 
@@ -363,6 +373,105 @@ driver affected by the change gets its own log:
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
+
+Recording who made the change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Add ``FieldLoggerMiddleware`` after Django's ``AuthenticationMiddleware``
+to record, in every log created while handling a request, the user and
+the client's IP address:
+
+.. code:: python
+
+    MIDDLEWARE = [
+        # ...
+        'django.contrib.auth.middleware.AuthenticationMiddleware',
+        'fieldlogger.middleware.FieldLoggerMiddleware',
+    ]
+
+The logs then get:
+
+-  ``actor_id``: the primary key of the user, as text, like
+   ``instance_id`` in the database. Filter with
+   ``FieldLog.objects.filter(actor_id=user.pk)``, and compare it with
+   ``str(user.pk)`` in Python.
+-  ``actor_username``: the user's ``get_username()`` at the time of the
+   change.
+-  ``remote_addr``: the client's IP address.
+
+Values that are not known are ``None``, except ``actor_id`` and
+``actor_username`` on Oracle, which reads empty text columns back as
+``''``: test them with ``if log.actor_id:``.
+
+There is no foreign key to the user model, so both ``actor_id`` and
+``actor_username`` stay when the user is renamed or deleted;
+``log.actor`` loads the user, or returns ``None`` if it was deleted.
+Anonymous requests record only the IP address, and ``request.user`` is
+only loaded when a log is created. The middleware works with both WSGI
+and ASGI.
+
+Code that does not run in a request, such as Celery tasks, management
+commands or scripts, can set the user with ``set_actor()``, which can
+also decorate a function:
+
+.. code:: python
+
+    from fieldlogger import set_actor
+
+    with set_actor(user):
+        driver.save()  # logged with this user
+
+The IP address is personal data: set ``'LOG_REMOTE_ADDR': False`` not to
+store it. It comes from ``REMOTE_ADDR``, which behind a reverse proxy is
+the proxy's address. Override ``get_remote_addr()`` to read the header
+your proxy sets instead; do not read ``X-Forwarded-For`` unless your
+proxy sets it, since clients can send it with any value. Values that
+are not valid IP addresses are not stored.
+
+.. code:: python
+
+    from fieldlogger.middleware import FieldLoggerMiddleware
+
+    class ProxyFieldLoggerMiddleware(FieldLoggerMiddleware):
+        def get_remote_addr(self, request):
+            return request.headers.get('X-Real-IP')
+
+``django.contrib.auth`` is not required: without it, the middleware
+records only the IP address.
+
+Disabling logging temporarily
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``disable_logging()`` turns logging off inside a ``with`` block, for
+example while importing data:
+
+.. code:: python
+
+    from fieldlogger import disable_logging
+
+    with disable_logging():
+        for driver in drivers:
+            driver.save()  # not logged
+        Driver.objects.bulk_create(new_drivers)  # not logged
+
+Inside the block, ``save()``, many-to-many changes and the bulk
+operations of ``FieldLoggerManager`` and its querysets (including
+``abulk_create`` and ``abulk_update``) create no logs and run no
+callbacks, and the queries that read the previous values are skipped.
+Changes made inside the block are not logged later either: the next log
+of a field starts from the value stored at that point.
+
+The state is kept in a ``contextvars.ContextVar``, so it only affects
+the current thread or async task: other requests keep logging. Blocks
+can be nested, and it can also decorate a function:
+
+.. code:: python
+
+    @disable_logging()
+    def import_drivers(rows):
+        ...
+
+In async code, use it as a ``with`` block inside the coroutine.
 
 License
 ~~~~~~~

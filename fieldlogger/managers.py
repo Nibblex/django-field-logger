@@ -11,6 +11,7 @@ from django.db.models import Q
 from django.db.models.fields import Field
 
 from .config import get_config
+from .context import logging_disabled
 from .db import batches, db_supports_returning_pks, reserve_primary_keys
 from .fieldlogger import PRE_INSTANCE_ATTR
 from .fieldlogger import log_fields as _log_fields
@@ -184,8 +185,9 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
 
     All of them accept two extra keyword arguments: ``log_fields`` to
     disable logging for the call, and ``run_callbacks`` to skip the
-    configured callbacks. Being a QuerySet, logging also applies after
-    ``using()``, ``filter()`` and other chained calls.
+    configured callbacks. Inside ``disable_logging()`` they behave as
+    with ``log_fields=False``. Being a QuerySet, logging also applies
+    after ``using()``, ``filter()`` and other chained calls.
     """
 
     def bulk_create(  # type: ignore[override]
@@ -199,6 +201,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         objs = list(objs)
         # Resolve self.db to the write database, as Django does.
         self._for_write = True
+        log_fields = log_fields and not logging_disabled()
 
         ignore_conflicts = kwargs.get("ignore_conflicts", False)
         update_conflicts = kwargs.get("update_conflicts", False)
@@ -285,6 +288,7 @@ class FieldLoggerQuerySet(models.QuerySet[_M]):
         objs = list(objs)
         # Resolve self.db to the write database, as Django does.
         self._for_write = True
+        log_fields = log_fields and not logging_disabled()
 
         logging_config = get_config().get(self.model)
         if not log_fields or logging_config is None:

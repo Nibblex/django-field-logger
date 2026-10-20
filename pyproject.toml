@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-field-logger"
-version = "0.5.0"
+version = "0.6.0"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
 license = {text = "MIT"}
@@ -16,6 +16,9 @@ maintainers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    # FieldLoggerMiddleware uses iscoroutinefunction/markcoroutinefunction,
+    # added in asgiref 3.6; Django 4.2+ already requires it.
+    "asgiref>=3.6",
     "Django>=4.0",
 ]
 classifiers = [
