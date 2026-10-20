@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import Any, cast
 
 from django.apps import apps
+from django.contrib.auth import get_user_model
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db import models
 from django.utils.functional import SimpleLazyObject
@@ -63,6 +64,16 @@ class FieldLog(models.Model):
     )
     extra_data = models.JSONField(encoder=Encoder, decoder=Decoder, default=dict)
     created = models.BooleanField(default=False, editable=False)
+    # Who made the change, from set_actor() or FieldLoggerMiddleware. The
+    # user is referenced without a foreign key, like the logged instance:
+    # its primary key as text, and its username at the time of the change.
+    actor_id = models.CharField(
+        max_length=255, blank=True, null=True, editable=False, db_index=True
+    )
+    actor_username = models.CharField(
+        max_length=255, blank=True, null=True, editable=False
+    )
+    remote_addr = models.GenericIPAddressField(blank=True, null=True, editable=False)
 
     class Meta:
         indexes = [
@@ -188,6 +199,14 @@ class FieldLog(models.Model):
     def instance(self) -> models.Model:
         """The logged instance, fetched from the database."""
         return self.model._base_manager.get(pk=self.instance_id)
+
+    @cached_property
+    def actor(self) -> models.Model | None:
+        """The user who made the change, fetched from the database with
+        ``get_user_model()``; ``None`` if unknown or deleted since."""
+        if self.actor_id is None:
+            return None
+        return get_user_model()._base_manager.filter(pk=self.actor_id).first()
 
     @cached_property
     def previous_log(self) -> "FieldLog | None":

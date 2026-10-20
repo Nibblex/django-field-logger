@@ -1,5 +1,6 @@
 """Core logging logic: detect field changes and create ``FieldLog`` records."""
 
+import ipaddress
 from collections.abc import Iterable, Sequence
 from typing import Any, cast
 
@@ -8,8 +9,10 @@ from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
 
+from .app_settings import get_settings
 from .callbacks import Logs, invoke_callbacks
 from .config import get_config, through_model
+from .context import current_actor
 from .db import batches, db_supports_returning_pks
 from .models import FieldLog
 
@@ -19,14 +22,54 @@ PRE_INSTANCE_ATTR = "_fieldlogger_pre_instance"
 PRE_M2M_ATTR = "_fieldlogger_pre_m2m"
 
 
-def _save_logs(field_logs: Sequence[FieldLog]) -> None:
-    """Insert ``field_logs``, setting their primary keys.
+def _ip_address(value: str | None) -> str | None:
+    """``value`` normalized if it is an IP address the database can store;
+    None otherwise. An address read from a header may be malformed, and
+    zone ids (``fe80::1%eth0``) do not fit a ``GenericIPAddressField``."""
+    if not value:
+        return None
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    return None if getattr(address, "scope_id", None) else str(address)
 
-    Callbacks receive the logs and may save them or follow
+
+def _actor_fields() -> dict[str, Any]:
+    """The ``FieldLog`` fields telling who made the change, from the active
+    ``set_actor()``; empty outside one."""
+    actor = current_actor()
+    if actor is None:
+        return {}
+
+    fields: dict[str, Any] = {}
+    # A lazy user (request.user) is evaluated here, so requests that log
+    # nothing do not load it.
+    user = actor.user
+    if user is not None and user.is_authenticated and user.pk is not None:
+        max_length = cast(Field, FieldLog._meta.get_field("actor_username")).max_length
+        fields["actor_id"] = str(user.pk)
+        fields["actor_username"] = user.get_username()[:max_length]
+    if get_settings().get("LOG_REMOTE_ADDR", True):
+        fields["remote_addr"] = _ip_address(actor.remote_addr)
+    return fields
+
+
+def _save_logs(field_logs: Sequence[FieldLog]) -> None:
+    """Insert ``field_logs``, recording who made the change and setting
+    their primary keys.
+
+    The actor is resolved once per operation, and only when there are
+    logs. Callbacks receive the logs and may save them or follow
     ``previous_log``, so they need their keys. Where ``bulk_create`` does
     not set them, each log is inserted on its own so the database assigns
     it, without guessing keys or bypassing the table's sequence.
     """
+    actor_fields = _actor_fields()
+    for field_log in field_logs:
+        for name, value in actor_fields.items():
+            setattr(field_log, name, value)
+
     using = router.db_for_write(FieldLog)
     if db_supports_returning_pks(FieldLog, using):
         FieldLog.objects.using(using).bulk_create(field_logs)

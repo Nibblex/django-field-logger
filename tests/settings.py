@@ -76,6 +76,10 @@ if TEST_DB != "sqlite":
         pymysql.install_as_MySQLdb()
 
 INSTALLED_APPS = [
+    # A user model for test_actor.py; the library does not need it (see
+    # settings_no_auth.py).
+    "django.contrib.contenttypes",
+    "django.contrib.auth",
     "fieldlogger",
     "tests.testapp.apps.TestAppConfig",
 ]
