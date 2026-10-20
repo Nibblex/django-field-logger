@@ -7,6 +7,7 @@ from django.db.models import Model
 from django.db.models.signals import m2m_changed, post_save, pre_save
 
 from .config import get_config, get_m2m_config, invalidate_config, through_model
+from .context import logging_disabled
 from .fieldlogger import (
     PRE_INSTANCE_ATTR,
     PRE_M2M_ATTR,
@@ -24,8 +25,9 @@ def pre_save_log_fields(
     **kwargs: Any,
 ) -> None:
     """Stash the current database state of the instance before saving."""
-    if raw:
-        # Fixture loading; there is nothing to compare against.
+    if raw or logging_disabled():
+        # Fixture loading has nothing to compare against; inside
+        # disable_logging() the state is not needed.
         return
 
     logging_config = get_config().get(sender)
@@ -53,8 +55,9 @@ def post_save_log_fields(
     **kwargs: Any,
 ) -> None:
     """Log the changed fields and clean up the stashed pre-save state."""
-    if raw:
-        # Fixture loading is a restore, not a change worth logging.
+    if raw or logging_disabled():
+        # Fixture loading is a restore, not a change worth logging. In
+        # both cases pre_save stashed nothing to clean up.
         return
 
     log_fields(sender, [instance], update_fields or frozenset(), using=using)
@@ -78,6 +81,9 @@ def m2m_changed_log_fields(
     Connected to the through model of every configured field; handles
     changes made from both sides of the relation.
     """
+    if logging_disabled():
+        return
+
     m2m_config = get_m2m_config().get(sender)
     if m2m_config is None:
         return

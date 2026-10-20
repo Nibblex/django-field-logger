@@ -74,7 +74,8 @@ How to set up?
    subclass ``fieldlogger.encoding.Encoder``. Changing them does not
    require a migration.
 -  ``LOGGING_ENABLED`` is optional. If you want to disable logging
-   globally, you can set this to ``False``.
+   globally, you can set this to ``False``. To disable it only for a
+   block of code, see `Disabling logging temporarily`_.
 -  ``FAIL_SILENTLY`` is optional. If it is set to ``False``, exceptions
    will be raised if the callback function fails.
 -  ``LOGGING_APPS`` apps to be logged.
@@ -312,7 +313,8 @@ also subclass ``FieldLoggerQuerySet`` and use ``YourQuerySet.as_manager()``.
 All of them accept two extra keyword arguments:
 
 -  ``log_fields`` set it to ``False`` to skip logging for that call
-   (default: ``True``).
+   (default: ``True``). To skip it for every operation in a block, see
+   `Disabling logging temporarily`_.
 -  ``run_callbacks`` set it to ``False`` to skip the configured
    callbacks for that call (default: ``True``).
 
@@ -363,6 +365,40 @@ driver affected by the change gets its own log:
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
+
+Disabling logging temporarily
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``disable_logging()`` turns logging off inside a ``with`` block, for
+example while importing data:
+
+.. code:: python
+
+    from fieldlogger import disable_logging
+
+    with disable_logging():
+        for driver in drivers:
+            driver.save()  # not logged
+        Driver.objects.bulk_create(new_drivers)  # not logged
+
+Inside the block, ``save()``, many-to-many changes and the bulk
+operations of ``FieldLoggerManager`` and its querysets (including
+``abulk_create`` and ``abulk_update``) create no logs and run no
+callbacks, and the queries that read the previous values are skipped.
+Changes made inside the block are not logged later either: the next log
+of a field starts from the value stored at that point.
+
+The state is kept in a ``contextvars.ContextVar``, so it only affects
+the current thread or async task: other requests keep logging. Blocks
+can be nested, and it can also decorate a function:
+
+.. code:: python
+
+    @disable_logging()
+    def import_drivers(rows):
+        ...
+
+In async code, use it as a ``with`` block inside the coroutine.
 
 License
 ~~~~~~~
