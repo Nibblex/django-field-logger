@@ -28,6 +28,9 @@ class ModelConfig(TypedDict):
     logging_m2m_fields: frozenset[models.ManyToManyField]
     callbacks: list[Callback]
     fail_silently: bool
+    # Whether the logs record who made the change (see set_actor()).
+    log_actor: bool
+    log_remote_addr: bool
 
 
 # Through model -> (model declaring the field, many-to-many field).
@@ -140,6 +143,12 @@ class LoggingConfig:
                     "logging_m2m_fields": logging_m2m_fields,
                     "callbacks": self._callbacks(app_config, model_config),
                     "fail_silently": self._fail_silently(app_config, model_config),
+                    "log_actor": self._all_scopes(
+                        "log_actor", app_config, model_config
+                    ),
+                    "log_remote_addr": self._all_scopes(
+                        "log_remote_addr", app_config, model_config
+                    ),
                 }
 
                 for field in logging_m2m_fields:

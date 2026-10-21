@@ -9,9 +9,8 @@ from django.db.models import ManyToManyField, Model
 from django.db.models.fields import Field
 from django.db.models.fields.files import FieldFile
 
-from .app_settings import get_settings
 from .callbacks import Logs, invoke_callbacks
-from .config import get_config, through_model
+from .config import ModelConfig, get_config, through_model
 from .context import current_actor
 from .db import batches, db_supports_returning_pks
 from .models import FieldLog
@@ -35,29 +34,36 @@ def _ip_address(value: str | None) -> str | None:
     return None if getattr(address, "scope_id", None) else str(address)
 
 
-def _actor_fields() -> dict[str, Any]:
+def _actor_fields(logging_config: ModelConfig) -> dict[str, Any]:
     """The ``FieldLog`` fields telling who made the change, from the active
-    ``set_actor()``; empty outside one."""
+    ``set_actor()``; empty outside one. ``log_actor`` and
+    ``log_remote_addr`` of the model's configuration select which."""
     actor = current_actor()
     if actor is None:
         return {}
 
     fields: dict[str, Any] = {}
     # A lazy user (request.user) is evaluated here, so requests that log
-    # nothing do not load it.
+    # nothing, or log models that do not record the user, do not load it.
     user = actor.user
-    if user is not None and user.is_authenticated and user.pk is not None:
+    if (
+        logging_config["log_actor"]
+        and user is not None
+        and user.is_authenticated
+        and user.pk is not None
+    ):
         max_length = cast(Field, FieldLog._meta.get_field("actor_username")).max_length
         fields["actor_id"] = str(user.pk)
         fields["actor_username"] = user.get_username()[:max_length]
-    if get_settings().get("LOG_REMOTE_ADDR", True):
+    if logging_config["log_remote_addr"]:
         fields["remote_addr"] = _ip_address(actor.remote_addr)
     return fields
 
 
-def _save_logs(field_logs: Sequence[FieldLog]) -> None:
-    """Insert ``field_logs``, recording who made the change and setting
-    their primary keys.
+def _save_logs(field_logs: Sequence[FieldLog], logging_config: ModelConfig) -> None:
+    """Insert ``field_logs``, the logs of a model configured with
+    ``logging_config``, recording who made the change and setting their
+    primary keys.
 
     The actor is resolved once per operation, and only when there are
     logs. Callbacks receive the logs and may save them or follow
@@ -65,7 +71,7 @@ def _save_logs(field_logs: Sequence[FieldLog]) -> None:
     not set them, each log is inserted on its own so the database assigns
     it, without guessing keys or bypassing the table's sequence.
     """
-    actor_fields = _actor_fields()
+    actor_fields = _actor_fields(logging_config)
     for field_log in field_logs:
         for name, value in actor_fields.items():
             setattr(field_log, name, value)
@@ -101,12 +107,14 @@ def _stored_value(row: Model, field: Field, empty_is_null: bool) -> Any:
 def _log_fields(
     model_class: type[Model],
     instances: Sequence[Model],
+    logging_config: ModelConfig,
     logging_fields: frozenset[Field],
     using: str | None = None,
 ) -> Logs:
     """Create a ``FieldLog`` for every changed field of every instance.
 
-    The previous state of each instance is read from its
+    Only ``logging_fields`` are compared: those of ``logging_config``,
+    possibly narrowed to the saved fields. The previous state of each instance is read from its
     ``PRE_INSTANCE_ATTR`` attribute; instances without it are considered
     newly created. The new state is read back from the database rather
     than from the instances: in memory a field may hold an expression
@@ -163,7 +171,7 @@ def _log_fields(
             logs.setdefault(instance.pk, {})[field.name] = field_log
 
     if field_logs_to_create:
-        _save_logs(field_logs_to_create)
+        _save_logs(field_logs_to_create, logging_config)
 
         # Give callbacks the same values as a log loaded from the database
         # (e.g. related instances instead of raw foreign key values).
@@ -200,7 +208,7 @@ def log_fields(
         )
 
     instances = list(instances)
-    logs = _log_fields(sender, instances, logging_fields, using)
+    logs = _log_fields(sender, instances, logging_config, logging_fields, using)
 
     if run_callbacks:
         invoke_callbacks(
@@ -278,7 +286,7 @@ def log_m2m_fields(
     if not field_logs_to_create:
         return logs
 
-    _save_logs(field_logs_to_create)
+    _save_logs(field_logs_to_create, logging_config)
 
     if run_callbacks:
         pk_field = model_class._meta.pk

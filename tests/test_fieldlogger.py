@@ -3,6 +3,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from fieldlogger import fieldlogger
+from fieldlogger.config import get_config
 from fieldlogger.models import FieldLog
 
 from .testapp.models import TestModel, TestModelRelated
@@ -113,7 +114,7 @@ def test_save_logs_sets_primary_keys(monkeypatch, returning):
     ]
 
     with CaptureQueriesContext(connection) as queries:
-        fieldlogger._save_logs(logs)
+        fieldlogger._save_logs(logs, get_config()[TestModel])
 
     inserts = [q for q in queries if q["sql"].startswith("INSERT")]
     assert len(inserts) == (1 if returning else 3)

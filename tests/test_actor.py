@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from asgiref.sync import async_to_sync, iscoroutinefunction, sync_to_async
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpResponse
@@ -19,7 +20,7 @@ from fieldlogger.middleware import FieldLoggerMiddleware
 from fieldlogger.models import FieldLog
 
 from .helpers import set_config
-from .testapp.models import TestModel, TestModelRelated2
+from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
 
 User = get_user_model()
 
@@ -132,12 +133,54 @@ class TestSetActor:
         assert char_log(instance).remote_addr == stored
 
     @pytest.mark.usefixtures("restore_settings")
-    def test_remote_addr_can_be_disabled(self, user):
-        set_config({"log_remote_addr": False}, "global")
+    @pytest.mark.parametrize("scope", ["global", "testapp", "testmodel"])
+    def test_remote_addr_can_be_disabled(self, user, scope):
+        set_config({"log_remote_addr": False}, scope)
         with set_actor(user, remote_addr="10.0.0.1"):
             instance = TestModel.objects.create(test_char_field="new")
 
         assert actor_of(char_log(instance)) == (str(user.pk), "alice", None)
+
+    @pytest.mark.usefixtures("restore_settings")
+    @pytest.mark.parametrize("scope", ["global", "testapp", "testmodel"])
+    def test_actor_can_be_disabled(self, user, scope):
+        set_config({"log_actor": False}, scope)
+        with set_actor(user, remote_addr="10.0.0.1"):
+            instance = TestModel.objects.create(test_char_field="new")
+
+        assert actor_of(char_log(instance)) == (None, None, "10.0.0.1")
+
+    @pytest.mark.usefixtures("restore_settings")
+    def test_model_options_apply_to_that_model_only(self, user):
+        models = settings.FIELD_LOGGER_SETTINGS["LOGGING_APPS"]["testapp"]["models"]
+        models["TestModelRelated"] = {"fields": ["test_char_field"]}
+        set_config({"log_actor": False, "log_remote_addr": False}, "testmodel")
+        with set_actor(user, remote_addr="10.0.0.1"):
+            instance = TestModel.objects.create(test_char_field="new")
+            related = TestModelRelated.objects.create(test_char_field="new")
+
+        assert actor_of(char_log(instance)) == (None, None, None)
+        assert actor_of(char_log(related)) == (str(user.pk), "alice", "10.0.0.1")
+
+    @pytest.mark.usefixtures("restore_settings")
+    def test_m2m_changes_follow_the_model_options(self, user):
+        set_config({"log_actor": False}, "testmodel")
+        instance = TestModel.objects.create()
+        with set_actor(user):
+            instance.test_many_to_many_field.add(TestModelRelated2.objects.create())
+
+        log = instance.fieldlog_set.get(field="test_many_to_many_field")
+        assert actor_of(log) == (None, None, None)
+
+    @pytest.mark.usefixtures("restore_settings")
+    def test_user_is_not_loaded_when_not_recorded(self, user):
+        set_config({"log_actor": False}, "testmodel")
+        evaluated = []
+
+        with set_actor(SimpleLazyObject(lambda: evaluated.append(True) or user)):
+            TestModel.objects.create(test_char_field="new")
+
+        assert evaluated == []
 
     def test_the_innermost_block_applies(self, user):
         other = User.objects.create_user(username="bob")
