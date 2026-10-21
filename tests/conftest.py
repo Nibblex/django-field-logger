@@ -4,7 +4,10 @@ import pytest
 from django.conf import settings
 from django.db import connections
 
-from .helpers import refresh_config
+# Detailed messages when an assert in the helpers fails, as in test files.
+pytest.register_assert_rewrite("tests.helpers")
+
+from .helpers import refresh_config  # noqa: E402
 
 ORIGINAL_SETTINGS = deepcopy(settings.FIELD_LOGGER_SETTINGS)
 

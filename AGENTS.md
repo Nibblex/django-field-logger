@@ -20,6 +20,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - Backends without bulk-insert RETURNING (MySQL, Oracle, old SQLite): use the `no_returning_pks` fixture (patches the connection feature). Do not monkeypatch `db_supports_returning_pks`: Django's `bulk_create` ignores it.
 - Tests mutate `settings.FIELD_LOGGER_SETTINGS` in place: use `helpers.set_config(...)` plus the `restore_settings` fixture, or call `helpers.refresh_config()` after any manual change. `override_settings` also works (handled by `setting_changed_receiver`).
 - `tests.settings` installs `django.contrib.auth`/`contenttypes` only so `test_actor.py` has users; the library must work without them. `settings_no_auth.py` checks that in a subprocess (`test_works_without_django_contrib_auth`), so never import auth models at module level in `fieldlogger/` (`get_user_model()` is called lazily).
+- Tests that need other settings run in a subprocess through `helpers.run_python(args, cwd, settings_module)` (SQLite in `cwd`, coverage variables stripped). Assertions in `tests/helpers.py` are rewritten by pytest (`register_assert_rewrite` in `conftest.py`), so plain `assert`s there give detailed failures.
 
 ## Architecture gotchas
 
