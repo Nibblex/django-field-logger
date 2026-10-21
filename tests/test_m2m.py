@@ -2,9 +2,8 @@ import pytest
 
 from fieldlogger import fieldlogger, signals
 
+from .helpers import CALLBACKS_EXTRA_DATA
 from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
-
-CALLBACKS_EXTRA_DATA = {"global": True, "testapp": True, "testmodel": True}
 
 
 @pytest.fixture
@@ -93,7 +92,7 @@ class TestM2MLogging:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_log_m2m_fields_on_unconfigured_model(instance, related):
+def test_log_m2m_fields_on_unconfigured_model():
     field = TestModel._meta.get_field("test_many_to_many_field")
     assert fieldlogger.log_m2m_fields(TestModelRelated, field, {}) == {}
 

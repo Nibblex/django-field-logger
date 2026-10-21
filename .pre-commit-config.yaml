@@ -37,7 +37,6 @@ repos:
       - id: destroyed-symlinks
       - id: detect-private-key
       - id: end-of-file-fixer
-      - id: file-contents-sorter
       - id: fix-byte-order-marker
       - id: forbid-new-submodules
       - id: forbid-submodules
@@ -45,16 +44,10 @@ repos:
       - id: no-commit-to-branch
       - id: pretty-format-json
       - id: requirements-txt-fixer
-      - id: sort-simple-yaml
       - id: trailing-whitespace
 
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
-    hooks:
-      - id: pyupgrade
-        args:
-          - --py310-plus
-
+  # Also does pyupgrade's job: the UP rules with target-version py310, plus
+  # C401-C405 and W605 (see [tool.ruff.lint] in pyproject.toml).
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.10
     hooks:

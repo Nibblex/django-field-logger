@@ -67,7 +67,9 @@ class TestModel(FieldLoggerMixin, TestingFieldsMixin):
 
 
 if django.VERSION >= (5, 0):
-    # Not logged by the default test settings; see test_stored_values.py.
+    # Neither field is logged by the default test settings: TestModelRelated
+    # is not configured (see test_stored_values.py), and a GeneratedField is
+    # never logged (see test_config.py).
     TestModelRelated.add_to_class(
         "test_db_default_field",
         models.IntegerField(db_default=7),

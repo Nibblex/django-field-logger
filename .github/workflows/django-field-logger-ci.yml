@@ -1,4 +1,5 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# Runs the test suite with tox on every supported Python version, and against
+# database servers. Linting runs on pre-commit.ci.
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
 name: fieldlogger CI
@@ -8,6 +9,9 @@ on:
     branches: ["main", "dev"]
   pull_request:
     branches: ["main", "dev"]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -19,17 +23,16 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
+      # tox builds the package and installs the test dependencies itself.
+      - name: Install tox
+        run: python -m pip install --upgrade pip tox
 
       # -f selects every env of the matrix with this python factor;
       # -e would create an ad-hoc env without any Django pin.
@@ -37,7 +40,7 @@ jobs:
         run: tox -q -f py$(echo ${{ matrix.python-version }} | tr -d .)
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -90,17 +93,15 @@ jobs:
       DB_PASSWORD: test
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - name: Install dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
+      - name: Install tox
+        run: python -m pip install --upgrade pip tox
 
       - name: Run tox
         run: tox -q -m ${{ matrix.backend }}

@@ -1,10 +1,5 @@
 """Recording who made the change: set_actor() and FieldLoggerMiddleware."""
 
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
 from asgiref.sync import async_to_sync, iscoroutinefunction, sync_to_async
 from django.conf import settings
@@ -19,7 +14,7 @@ from fieldlogger.context import current_actor
 from fieldlogger.middleware import FieldLoggerMiddleware
 from fieldlogger.models import FieldLog
 
-from .helpers import set_config
+from .helpers import run_python, set_config
 from .testapp.models import TestModel, TestModelRelated, TestModelRelated2
 
 User = get_user_model()
@@ -324,23 +319,4 @@ assert (log.actor_id, log.actor, log.remote_addr) == (None, None, "127.0.0.1")
 def test_works_without_django_contrib_auth(tmp_path):
     """The user model is optional: without django.contrib.auth, logs are
     still created through the middleware, with the address and no user."""
-    env = {
-        name: value
-        for name, value in os.environ.items()
-        # pytest-cov measures subprocesses through these variables; the
-        # child would report its own files with a wider source.
-        if not name.startswith("COV_CORE_") and name != "COVERAGE_PROCESS_START"
-    }
-    env["PYTHONPATH"] = str(Path(__file__).parent.parent)
-    env["DJANGO_SETTINGS_MODULE"] = "tests.settings_no_auth"
-    env.pop("TEST_DB", None)  # SQLite, created in tmp_path.
-
-    result = subprocess.run(
-        [sys.executable, "-c", NO_AUTH_SCRIPT],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_python(["-c", NO_AUTH_SCRIPT], tmp_path, "tests.settings_no_auth")

@@ -15,6 +15,7 @@
    :alt: pre-commit.ci status
 .. image:: https://codecov.io/gh/Nibblex/django-field-logger/graph/badge.svg?token=H1N619SS8P
    :target: https://codecov.io/gh/Nibblex/django-field-logger
+   :alt: Codecov
 .. image:: https://img.shields.io/pypi/l/django-field-logger
    :target: https://github.com/Nibblex/django-field-logger/blob/main/LICENSE
    :alt: PyPI - License
@@ -56,19 +57,19 @@ How to set up?
                         'exclude_fields': ['field3', 'field4'], # (default: [])
                         'callbacks': [
                             lambda instance, fields, logs: print(instance, fields, logs),
-                            'yourapp.app.callbacks.your_function_name'
+                            'yourapp.callbacks.your_function_name'
                         ], # (default: [])
                     },
                 },
                 'callbacks': [
                     lambda instance, fields, logs: print(instance, fields, logs),
-                    'yourapp.app.callbacks.your_function_name'
+                    'yourapp.callbacks.your_function_name'
                 ], # (default: [])
             },
         },
         'CALLBACKS': [
             lambda instance, fields, logs: print(instance, fields, logs),
-            'yourapp.app.callbacks.your_function_name'
+            'yourapp.callbacks.your_function_name'
         ], # (default: [])
     }
 
@@ -82,8 +83,10 @@ How to set up?
 -  ``LOGGING_ENABLED`` is optional. If you want to disable logging
    globally, you can set this to ``False``. To disable it only for a
    block of code, see `Disabling logging temporarily`_.
--  ``FAIL_SILENTLY`` is optional. If it is set to ``False``, exceptions
-   will be raised if the callback function fails.
+-  ``FAIL_SILENTLY`` is optional. With the default ``True``, a failing
+   callback is logged, with its traceback, to the
+   ``fieldlogger.callbacks`` logger, and the remaining callbacks still
+   run. Set it to ``False`` to let the exception propagate.
 -  ``LOG_ACTOR`` and ``LOG_REMOTE_ADDR`` are optional. Set them to
    ``False`` not to store the user or the client's IP address (see
    `Recording who made the change`_).
@@ -109,40 +112,44 @@ How to set up?
          are supported through the ``m2m_changed`` signal (see
          `Many-to-many fields`_).
 
-      -  ``callbacks`` is optional. If you want to add a callback
-         function to be called after logging all models in all apps, you
-         can add it here. Callback functions must be callable objects.
-         You can optionally specify a callback function path in your
-         configuration. The best practice is to place your callback
-         function in yourapp/callbacks.py. Callback functions must have
-         three parameters as follows:
+      -  ``callbacks`` is optional: functions called after the changes of
+         an instance of this model are logged. The global ``CALLBACKS``
+         and the app's ``callbacks`` run for it too, in that order: global,
+         app, model. Each callback is a callable or the dotted path to one
+         (e.g. ``'yourapp.callbacks.your_function_name'``), and receives
+         three arguments:
 
          .. code:: python
 
             # callback as a named function
             def your_callback(instance, fields, logs):
-                # your code here
+                ...  # your code here
 
             # callback as a lambda function
-            lambda instance, fields, logs: # your code here
+            lambda instance, fields, logs: ...  # your code here
 
-         -  ``instance`` the model instance that is being logged.
-         -  ``fields`` list of fields that are being logged.
-         -  ``logs`` dict of logs that are being created. The key is the
-            field name and the value is the ``FieldLog`` instance.
+         -  ``instance`` the model instance whose changes were logged.
+         -  ``fields`` the logged fields of the operation, as a frozenset
+            of ``Field`` objects: only the saved ones with
+            ``update_fields`` or ``bulk_update()``, and just the
+            many-to-many field for its changes.
+         -  ``logs`` dict of the logs created for the instance, keyed by
+            field name. It is empty when nothing changed: callbacks run for
+            every saved instance, while many-to-many changes only run them
+            for the instances that got a log.
 
 How it works?
 ~~~~~~~~~~~~~
 
--  Obtains the ``FIELD_LOGGER_SETTINGS`` from your respective settings
-   file based on your environment.
--  Initializes ``LOGGING_APPS`` with the relative project paths of your
-   models based on your configuration variable.
--  Binds to the ``pre_save`` and ``post_save`` signals of each loggable
-   model, and to the ``m2m_changed`` signal of each loggable
-   many-to-many field.
--  For each field specified in the configuration variable, creates a
-   record in the ``FieldLog`` model for each instance update.
+-  On startup, reads ``FIELD_LOGGER_SETTINGS`` and resolves, for each
+   configured model, the fields to log and the options of its scopes.
+-  Connects to the ``pre_save`` and ``post_save`` signals of each logged
+   model, and to the ``m2m_changed`` signal of each logged many-to-many
+   field. Bulk operations are logged by ``FieldLoggerManager`` (see
+   `The FieldLoggerManager`_).
+-  Creates one ``FieldLog`` record per changed field: when an instance
+   is created (``created=True``), when it is saved with changes, and
+   when its many-to-many relations change.
 -  The logged values are read back from the database after saving, so
    they are the stored ones: expressions such as ``F('count') + 1`` are
    logged as their result, and values the database rounds or converts
@@ -154,9 +161,7 @@ How it works?
 Example
 ~~~~~~~
 
-This section serves as a small example to demonstrate how to use this package.
-
-Supposing you have this configuration in your settings.py file:
+Given this configuration in your ``settings.py``:
 
 .. code:: python
 
@@ -172,8 +177,8 @@ Supposing you have this configuration in your settings.py file:
         },
     }
 
-Supposing you have a model called ``Driver`` with fields called
-``latest_speed``, ``driver_name``, ``driver_id``:
+and a ``Driver`` model with the fields ``latest_speed``, ``driver_name``
+and ``driver_id``:
 
 .. code:: python
 
@@ -199,8 +204,8 @@ Supposing you have a model called ``Driver`` with fields called
 Callback example
 ~~~~~~~~~~~~~~~~
 
-Supposing you have this function in yourapp/callbacks.py which sets the
-``extra_data`` field of the ``FieldLog`` model:
+This function, in ``yourapp/callbacks.py``, sets the ``extra_data`` field
+of the new log of ``driver_name``:
 
 .. code:: python
 
@@ -238,9 +243,8 @@ Then you can add this callback function to your configuration like this:
 The model structure
 ~~~~~~~~~~~~~~~~~~~
 
-This package provides you a django model which is called ``FieldLog``;
-which tracks each change to a model instance specified in your
-configuration mapping. An example record is as follows:
+``FieldLog`` stores one record per change to a field of a logged
+instance. An example record:
 
 ::
 
@@ -285,13 +289,11 @@ log is loaded:
 The FieldLoggerMixin
 ~~~~~~~~~~~~~~~~~~~~
 
-This package provides you a mixin class which is called
-``FieldLoggerMixin``. This mixin class provides you the following
-property:
+Add ``FieldLoggerMixin`` to a logged model to get this property:
 
--  ``fieldlog_set`` since the ``FieldLog`` model has not a direct
-   relation to the model that is being logged, you can use this property
-   to get the logs of the instance that is being logged.
+-  ``fieldlog_set``: the logs of the instance. ``FieldLog`` has no
+   foreign key to the logged models, so this property plays the part of
+   a reverse relation, returning a new QuerySet on every access.
 
    .. code:: python
 
@@ -324,9 +326,10 @@ manager returns, so they are also logged after chained calls such as
 async variants ``abulk_create`` and ``abulk_update`` (available on the
 manager from Django 4.1, on the QuerySet on every version).
 
-Your own QuerySet keeps logging: ``FieldLoggerManager.from_queryset(YourQuerySet)``,
-and a ``FieldLoggerManager`` subclass whose ``get_queryset()`` returns
-another QuerySet, both combine it with ``FieldLoggerQuerySet``. You can
+Your own QuerySet keeps logging:
+``FieldLoggerManager.from_queryset(YourQuerySet)``, and a
+``FieldLoggerManager`` subclass whose ``get_queryset()`` returns another
+QuerySet, both combine it with ``FieldLoggerQuerySet``. You can
 also subclass ``FieldLoggerQuerySet`` and use ``YourQuerySet.as_manager()``.
 
 All of them accept two extra keyword arguments:
@@ -458,10 +461,11 @@ for those logs:
     }
 
 The IP address is personal data. It comes from ``REMOTE_ADDR``, which
-behind a reverse proxy is the proxy's address. Override ``get_remote_addr()`` to read the header
-your proxy sets instead; do not read ``X-Forwarded-For`` unless your
-proxy sets it, since clients can send it with any value. Values that
-are not valid IP addresses are not stored.
+behind a reverse proxy is the proxy's address. Override
+``get_remote_addr()`` to read the header your proxy sets instead; do
+not read ``X-Forwarded-For`` unless your proxy sets it, since clients
+can send it with any value. Values that are not valid IP addresses are
+not stored.
 
 .. code:: python
 

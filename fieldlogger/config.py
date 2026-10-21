@@ -1,9 +1,10 @@
 """Configuration loading for django-field-logger.
 
 Reads the ``FIELD_LOGGER_SETTINGS`` dict from the Django settings and builds
-a per-model logging configuration, resolving the ``logging_enabled``,
-``fail_silently`` and ``callbacks`` options across the global, app and model
-scopes.
+a per-model logging configuration, resolving the options that apply across
+the global, app and model scopes: the switches ``logging_enabled``,
+``fail_silently``, ``log_actor`` and ``log_remote_addr``, and the
+``callbacks`` of every scope.
 """
 
 from typing import Any, TypedDict, cast
@@ -71,12 +72,6 @@ class LoggingConfig:
             config.get(key, True) for config in configs
         )
 
-    def _logging_enabled(self, *configs: dict) -> bool:
-        return self._all_scopes("logging_enabled", *configs)
-
-    def _fail_silently(self, *configs: dict) -> bool:
-        return self._all_scopes("fail_silently", *configs)
-
     def _callbacks(self, *configs: dict) -> list[Callback]:
         """Concatenate the callbacks of all scopes, importing dotted paths."""
         callbacks = list(self._settings.get("CALLBACKS", []))
@@ -120,13 +115,12 @@ class LoggingConfig:
         self._settings = get_settings()
 
         for app, app_config in self._settings.get("LOGGING_APPS", {}).items():
-            if not app_config or not self._logging_enabled(app_config):
+            if not app_config or not self._all_scopes("logging_enabled", app_config):
                 continue
 
             for model, model_config in app_config.get("models", {}).items():
-                if not model_config or not self._logging_enabled(
-                    app_config, model_config
-                ):
+                scopes = (app_config, model_config)
+                if not model_config or not self._all_scopes("logging_enabled", *scopes):
                     continue
 
                 try:
@@ -141,21 +135,14 @@ class LoggingConfig:
                 self._config[model_class] = {
                     "logging_fields": logging_fields,
                     "logging_m2m_fields": logging_m2m_fields,
-                    "callbacks": self._callbacks(app_config, model_config),
-                    "fail_silently": self._fail_silently(app_config, model_config),
-                    "log_actor": self._all_scopes(
-                        "log_actor", app_config, model_config
-                    ),
-                    "log_remote_addr": self._all_scopes(
-                        "log_remote_addr", app_config, model_config
-                    ),
+                    "callbacks": self._callbacks(*scopes),
+                    "fail_silently": self._all_scopes("fail_silently", *scopes),
+                    "log_actor": self._all_scopes("log_actor", *scopes),
+                    "log_remote_addr": self._all_scopes("log_remote_addr", *scopes),
                 }
 
                 for field in logging_m2m_fields:
-                    self._m2m_config[through_model(field)] = (
-                        model_class,
-                        field,
-                    )
+                    self._m2m_config[through_model(field)] = (model_class, field)
 
     def get_config(self) -> dict[type[Model], ModelConfig]:
         """Return the per-model configuration, building it on first access."""

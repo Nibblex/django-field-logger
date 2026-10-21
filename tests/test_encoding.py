@@ -1,8 +1,4 @@
-import os
-import subprocess
-import sys
 from base64 import b64encode
-from pathlib import Path
 
 import pytest
 from django.core.files.base import ContentFile
@@ -11,6 +7,7 @@ from fieldlogger import encoding
 from fieldlogger.models import FieldLog
 
 from .custom_codec import Point, PointDecoder, PointEncoder
+from .helpers import run_python
 from .testapp.models import TestModelRelated
 
 
@@ -80,31 +77,8 @@ def test_configured_classes_do_not_change_migrations(tmp_path):
     """The JSON fields always reference Encoder/Decoder: configuring other
     classes used to make makemigrations write a migration into the
     installed package."""
-    env = {
-        name: value
-        for name, value in os.environ.items()
-        # pytest-cov measures subprocesses through these variables; the
-        # child would report its own files with a wider source.
-        if not name.startswith("COV_CORE_") and name != "COVERAGE_PROCESS_START"
-    }
-    env["PYTHONPATH"] = str(Path(__file__).parent.parent)
-    env.pop("TEST_DB", None)  # SQLite, created in tmp_path.
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "django",
-            "makemigrations",
-            "fieldlogger",
-            "--check",
-            "--dry-run",
-            "--settings=tests.settings_custom_codec",
-        ],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
+    run_python(
+        ["-m", "django", "makemigrations", "fieldlogger", "--check", "--dry-run"],
+        tmp_path,
+        "tests.settings_custom_codec",
     )
-
-    assert result.returncode == 0, result.stdout + result.stderr

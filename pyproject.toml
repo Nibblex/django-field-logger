@@ -1,13 +1,15 @@
 [build-system]
-requires = ["setuptools>=61"]
+# 77.0.3: first release with full support for SPDX license expressions.
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-field-logger"
-version = "0.7.0"
+version = "0.7.1"
 description = "A Django app for logging changes in model fields."
 readme = {file = "README.rst", content-type = "text/x-rst"}
-license = {text = "MIT"}
+license = "MIT"
+keywords = ["django", "audit", "audit-log", "history", "changes", "field", "logging"]
 authors = [
     {name = "Sergio Rodríguez", email = "srodriguez3441@gmail.com"},
 ]
@@ -23,7 +25,6 @@ dependencies = [
 ]
 classifiers = [
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Framework :: Django",
     "Framework :: Django :: 4.0",
@@ -57,7 +58,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nibblex/django-field-logger"
+Homepage = "https://github.com/Nibblex/django-field-logger"
+Source = "https://github.com/Nibblex/django-field-logger"
+Issues = "https://github.com/Nibblex/django-field-logger/issues"
+Changelog = "https://github.com/Nibblex/django-field-logger/releases"
 
 [tool.setuptools]
 include-package-data = true
@@ -65,9 +69,16 @@ include-package-data = true
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 django_find_project = false
-python_files = ["test_*.py", "*_tests.py"]
-pythonpath = [".", "fieldlogger"]
-filterwarnings = ["ignore::DeprecationWarning"]
+# The repo root, so tests.settings and this checkout of fieldlogger (not the
+# copy tox installs) are imported.
+pythonpath = ["."]
+# Deprecations triggered by our own code (library or tests) fail the run;
+# those of third-party code are not ours to fix.
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "error::DeprecationWarning:fieldlogger",
+    "error::DeprecationWarning:tests",
+]
 
 [tool.coverage.run]
 source = ["fieldlogger"]
@@ -142,4 +153,8 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+select = [
+    "E4", "E7", "E9", "F", "I", "B", "UP",
+    # With UP, what the pyupgrade hook used to fix.
+    "C401", "C402", "C403", "C404", "C405", "W605",
+]
