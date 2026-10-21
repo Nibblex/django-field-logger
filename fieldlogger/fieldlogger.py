@@ -86,6 +86,13 @@ def _save_logs(field_logs: Sequence[FieldLog], logging_config: ModelConfig) -> N
             field_log.save(using=using, force_insert=True)
 
 
+def _mask(value: Any, logging_config: ModelConfig) -> Any:
+    """``value`` as logged for a masked field: what the model's mask returns
+    for it. None (no value) is logged as None, so that setting or clearing
+    the field stays visible."""
+    return None if value is None else logging_config["mask"](value)
+
+
 def _stored_value(row: Model, field: Field, empty_is_null: bool) -> Any:
     """Value of ``field`` in a row read from the database.
 
@@ -116,14 +123,17 @@ def _log_fields(
     Only ``logging_fields`` are compared: those of ``logging_config``,
     possibly narrowed to the saved fields. The previous state of each
     instance is read from its ``PRE_INSTANCE_ATTR`` attribute; instances
-    without it are considered newly created. The new state is read back from the database rather
-    than from the instances: in memory a field may hold an expression
-    (``F()``, a database function, ``db_default``) or a value the database
-    stores differently (e.g. a ``Decimal`` with more decimal places than
-    the field). Instances whose row is not found are not logged.
+    without it are considered newly created. The new state is read back
+    from the database rather than from the instances: in memory a field
+    may hold an expression (``F()``, a database function, ``db_default``)
+    or a value the database stores differently (e.g. a ``Decimal`` with
+    more decimal places than the field). Instances whose row is not found
+    are not logged.
 
     Values are compared by ``attname``, so foreign keys are compared by
-    their raw value without fetching the related instances.
+    their raw value without fetching the related instances. The fields in
+    ``mask_fields`` are compared by their real values too, and logged
+    masked.
     """
     if not logging_fields or not instances:
         return {}
@@ -156,6 +166,11 @@ def _log_fields(
             if new_value == old_value:
                 continue
 
+            masked = field.name in logging_config["mask_fields"]
+            if masked:
+                old_value = _mask(old_value, logging_config)
+                new_value = _mask(new_value, logging_config)
+
             field_log = FieldLog(
                 app_label=instance._meta.app_label,
                 # Always set on concrete models; Optional only in the stubs.
@@ -165,6 +180,7 @@ def _log_fields(
                 old_value=old_value,
                 new_value=new_value,
                 created=pre_instance is None,
+                masked=masked,
             )
 
             field_logs_to_create.append(field_log)
@@ -265,6 +281,7 @@ def log_m2m_fields(
 
     new_state = m2m_pks(field, old_state, using)
 
+    masked = field.name in logging_config["mask_fields"]
     logs: Logs = {}
     field_logs_to_create = []
     for instance_pk, old_pks in old_state.items():
@@ -272,13 +289,20 @@ def log_m2m_fields(
         if old_pks == new_pks:
             continue
 
+        old_value: Any = sorted(old_pks)
+        new_value: Any = sorted(new_pks)
+        if masked:
+            old_value = _mask(old_value, logging_config)
+            new_value = _mask(new_value, logging_config)
+
         field_log = FieldLog(
             app_label=model_class._meta.app_label,
             model_name=cast(str, model_class._meta.model_name),
             instance_id=instance_pk,
             field=field.name,
-            old_value=sorted(old_pks),
-            new_value=sorted(new_pks),
+            old_value=old_value,
+            new_value=new_value,
+            masked=masked,
         )
         field_logs_to_create.append(field_log)
         logs.setdefault(instance_pk, {})[field.name] = field_log

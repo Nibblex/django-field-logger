@@ -41,12 +41,16 @@ How to set up?
         'FAIL_SILENTLY': True, # (default: True)
         'LOG_ACTOR': True, # (default: True)
         'LOG_REMOTE_ADDR': True, # (default: True)
+        'MASK_FIELDS': ['password'], # (default: [])
+        'MASK_CALLABLE': 'yourapp.masking.your_mask', # (default: None, values logged as '********')
         'LOGGING_APPS': {
             'your_app': {
                 'logging_enabled': True, # (default: True)
                 'fail_silently': True, # (default: True)
                 'log_actor': True, # (default: True)
                 'log_remote_addr': True, # (default: True)
+                'mask_fields': ['field5'], # (default: [])
+                'mask_callable': 'yourapp.masking.your_mask', # (default: None)
                 'models': {
                     'YourModel': {
                         'logging_enabled': True, # (default: True)
@@ -55,6 +59,8 @@ How to set up?
                         'log_remote_addr': True, # (default: True)
                         'fields': ['field1', 'field2'], # or '__all__' (default: [], no field is logged)
                         'exclude_fields': ['field3', 'field4'], # (default: [])
+                        'mask_fields': ['field6'], # (default: [])
+                        'mask_callable': 'yourapp.masking.your_mask', # (default: None)
                         'callbacks': [
                             lambda instance, fields, logs: print(instance, fields, logs),
                             'yourapp.callbacks.your_function_name'
@@ -95,6 +101,11 @@ How to set up?
    lowercase (``logging_enabled``, ``fail_silently``, ``log_actor``,
    ``log_remote_addr``). Each one is on unless it is ``False`` in the
    global settings, the app or the model.
+-  ``MASK_FIELDS`` and ``MASK_CALLABLE`` are optional: fields whose values
+   are logged masked, and the function that masks them (see `Masking
+   sensitive fields`_). Per app and per model they are ``mask_fields``,
+   which add up across scopes like the callbacks, and ``mask_callable``,
+   taken from the most specific scope that sets one.
 -  ``LOGGING_APPS`` apps to be logged.
 
    -  ``models`` models to be logged.
@@ -262,6 +273,7 @@ instance. An example record:
         'actor_id': '7', # who made the change, see "Recording who made the change" (default: None)
         'actor_username': 'admin', # (default: None)
         'remote_addr': '127.0.0.1', # (default: None)
+        'masked': False, # True if the values were masked, see "Masking sensitive fields"
     }
 
 Additionally, ``FieldLog`` model provides the following properties:
@@ -387,6 +399,58 @@ driver affected by the change gets its own log:
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
+
+Masking sensitive fields
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+To record that a sensitive field changed without storing its values, add
+it to ``mask_fields``. Its logs still show when the field changed and
+who changed it, but ``old_value`` and ``new_value`` hold a mask instead
+of the values, and ``log.masked`` is ``True``:
+
+.. code:: python
+
+    FIELD_LOGGER_SETTINGS = {
+        'MASK_FIELDS': ['password'],  # in every logged model
+        'LOGGING_APPS': {
+            'drivers': {
+                'models': {
+                    'Driver': {
+                        'fields': '__all__',
+                        'mask_fields': ['license_number'],
+                    },
+                },
+            },
+        },
+    }
+
+    log = driver.fieldlog_set.filter(field='license_number').last()
+    print(log.old_value, log.new_value, log.masked)  # prints: ******** ******** True
+
+-  The mask is ``'********'`` for any value, so it reveals neither part of
+   the value nor its length. An empty value (``None``) is logged as
+   ``None``, so you can still see when the field was set or cleared.
+-  Changes are detected on the real values, before masking.
+-  Masked values are not converted back when a log is loaded, since they
+   are not values of the field, and callbacks receive the logs already
+   masked.
+-  Many-to-many fields can be masked too: both lists are replaced by the
+   mask.
+-  The global ``MASK_FIELDS`` and the ``mask_fields`` of the app and of
+   the model add up.
+-  Values are masked when the log is created: changing the configuration
+   later does not alter existing logs.
+
+To log something else, such as the last digits, set ``mask_callable`` (a
+function or its dotted path) in the model or app configuration, or
+``MASK_CALLABLE`` globally; the most specific one applies. It receives
+the real value and returns what is logged, which must be serializable to
+JSON:
+
+.. code:: python
+
+    def last_four(value):
+        return '****' + str(value)[-4:]
 
 Recording who made the change
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
