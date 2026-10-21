@@ -5,11 +5,12 @@ from fieldlogger.callbacks import invoke_callbacks
 from .testapp.models import TestModel
 
 
+def bad_callback(*args):
+    raise ValueError("boom")
+
+
 def test_failing_callback_is_logged_when_fail_silently(caplog):
     received = []
-
-    def bad_callback(*args):
-        raise ValueError("boom")
 
     invoke_callbacks(
         [TestModel()],
@@ -25,9 +26,6 @@ def test_failing_callback_is_logged_when_fail_silently(caplog):
 
 
 def test_failing_callback_propagates_without_fail_silently():
-    def bad_callback(*args):
-        raise ValueError("boom")
-
     with pytest.raises(ValueError, match="boom"):
         invoke_callbacks([TestModel()], [bad_callback], {}, frozenset())
 

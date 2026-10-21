@@ -12,7 +12,7 @@ from fieldlogger.config import get_config
 from fieldlogger.managers import existing_rows
 from fieldlogger.models import FieldLog
 
-from .test_managers import upsert_unique_fields
+from .helpers import upsert_unique_fields
 from .testapp.models import CompositeUniqueModel
 
 LOGGED = {

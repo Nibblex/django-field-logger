@@ -1,14 +1,13 @@
 import django
 import pytest
 from asgiref.sync import async_to_sync
-from django.db import connections
 
 from fieldlogger.config import get_config
 from fieldlogger.fieldlogger import PRE_INSTANCE_ATTR
 from fieldlogger.managers import MAX_OR_TERMS, existing_rows, log_upserted
 from fieldlogger.models import FieldLog
 
-from .helpers import CREATE_FORM, bulk_check_logs
+from .helpers import CREATE_FORM, bulk_check_logs, upsert_unique_fields
 from .testapp.models import SoftDeleteModel, TestModel
 
 
@@ -85,8 +84,9 @@ def test_bulk_create_logs_without_pk_returning_support(no_returning_pks):
     ids=["ignore_conflicts", "no-returning-pks"],
 )
 def test_inserts_after_manual_primary_keys_get_new_keys(kwargs, returning, request):
-    """Explicit keys do not advance the sequence on PostgreSQL and Oracle;
-    without resetting it, the next insert reused them."""
+    """Explicit keys do not advance the sequence on PostgreSQL and Oracle,
+    so the keys assigned before the insert are reserved from it; otherwise
+    the next insert would reuse them."""
     request.getfixturevalue(
         "supports_ignore_conflicts" if returning else "no_returning_pks"
     )
@@ -152,15 +152,6 @@ class TestIgnoreConflictsPrimaryKeys:
 
         assert conflicting.pk is not None
         assert created.pk > conflicting.pk
-
-
-def upsert_unique_fields(unique_fields):
-    """``unique_fields`` argument for ``bulk_create(update_conflicts=True)``:
-    MySQL and MariaDB upsert on any unique constraint and reject it."""
-    features = connections["default"].features
-    if features.supports_update_conflicts_with_target:
-        return {"unique_fields": unique_fields}
-    return {}
 
 
 def char_logs(instance, created):
@@ -307,7 +298,8 @@ class TestBulkCreateUpdateConflicts:
 
     def test_inserts_after_an_upsert_get_new_keys(self):
         """Django < 5.0 leaves the keys of inserted rows unset, so they are
-        assigned manually; the sequence must follow them."""
+        assigned manually, from the sequence on PostgreSQL and Oracle so that
+        later inserts do not reuse them."""
         TestModel.objects.create(test_unique_field="existing")
 
         (inserted,) = self.upsert([TestModel(test_unique_field="new")])

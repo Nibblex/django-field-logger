@@ -31,3 +31,8 @@ __pycache__/
 
 # media
 media
+
+# SQLite files that management commands run with tests.settings leave
+# behind (e.g. the migrations check)
+/test_db
+/test_db_other

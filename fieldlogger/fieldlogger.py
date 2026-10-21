@@ -114,9 +114,9 @@ def _log_fields(
     """Create a ``FieldLog`` for every changed field of every instance.
 
     Only ``logging_fields`` are compared: those of ``logging_config``,
-    possibly narrowed to the saved fields. The previous state of each instance is read from its
-    ``PRE_INSTANCE_ATTR`` attribute; instances without it are considered
-    newly created. The new state is read back from the database rather
+    possibly narrowed to the saved fields. The previous state of each
+    instance is read from its ``PRE_INSTANCE_ATTR`` attribute; instances
+    without it are considered newly created. The new state is read back from the database rather
     than from the instances: in memory a field may hold an expression
     (``F()``, a database function, ``db_default``) or a value the database
     stores differently (e.g. a ``Decimal`` with more decimal places than

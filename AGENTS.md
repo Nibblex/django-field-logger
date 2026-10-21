@@ -10,15 +10,17 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 
 ## Testing
 
-- Settings: `tests.settings` (set in `pyproject.toml`); `pythonpath` includes both `.` and `fieldlogger`.
+- Settings: `tests.settings` (set in `pyproject.toml`); `pythonpath` is the repo root, so this checkout of `fieldlogger` is imported (not tox's installed copy). Always import package modules as `fieldlogger.<module>`.
+- Deprecation warnings raised from `fieldlogger` or `tests` code are errors (`filterwarnings`); third-party ones stay ignored. Fix a new one instead of filtering it.
 - Single test: `python -m pytest -q tests/test_m2m.py -k clear`.
 - Coverage gate is `fail_under = 100` (migrations excluded). Every new branch needs a test.
-- Matrix lives in `[tool.tox]` in `pyproject.toml`. CI runs `tox -f py313` (all Django versions for that Python); `-e py313` would run with no Django pin.
+- Matrix lives in `[tool.tox]` in `pyproject.toml`. CI installs only tox and runs `tox -f pyXY` for each Python (all Django versions for that Python, e.g. `-f py313`); `-e py313` would run with no Django pin.
 - `testapp` (`tests/testapp/`) has no migrations; tables are synced. Two SQLite DBs (`default`, `other`) exist for multi-db tests.
 - Other databases: `tox -m postgres|mysql|mariadb|oracle` (envs `<backend>-django{61,52,42}`, Oracle only 61/52 since Django < 5.0 needs `cx_Oracle`; not in `env_list`, CI job `servers`). Needs a server from `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD` (`TEST_DB` picks the backend, see `tests/settings.py`), e.g. `docker run -d --rm -e POSTGRES_PASSWORD=pw -p 5432:5432 postgres:16-alpine` then `DB_PASSWORD=pw tox -m postgres`; images: `mysql:8.4`, `mariadb:11`, `gvenzl/oracle-free:23-slim-faststart` (`ORACLE_PASSWORD`, user `system`). MySQL uses PyMySQL (no client libs). The coverage gate is off there (`PYTEST_ADDOPTS`); it is enforced by the SQLite matrix. Sequence bugs only show on PostgreSQL/Oracle (SQLite and MySQL follow explicit pks); Oracle stores `''` as NULL, reads NULL text columns back as `''` (so test `actor_id`/`actor_username` for falsiness, never `is None`) and lacks `ignore_conflicts` (skip with the `supports_ignore_conflicts` fixture).
 - Backends without bulk-insert RETURNING (MySQL, Oracle, old SQLite): use the `no_returning_pks` fixture (patches the connection feature). Do not monkeypatch `db_supports_returning_pks`: Django's `bulk_create` ignores it.
 - Tests mutate `settings.FIELD_LOGGER_SETTINGS` in place: use `helpers.set_config(...)` plus the `restore_settings` fixture, or call `helpers.refresh_config()` after any manual change. `override_settings` also works (handled by `setting_changed_receiver`).
 - `tests.settings` installs `django.contrib.auth`/`contenttypes` only so `test_actor.py` has users; the library must work without them. `settings_no_auth.py` checks that in a subprocess (`test_works_without_django_contrib_auth`), so never import auth models at module level in `fieldlogger/` (`get_user_model()` is called lazily).
+- Tests that need other settings run in a subprocess through `helpers.run_python(args, cwd, settings_module)` (SQLite in `cwd`, coverage variables stripped). Assertions in `tests/helpers.py` are rewritten by pytest (`register_assert_rewrite` in `conftest.py`), so plain `assert`s there give detailed failures.
 
 ## Architecture gotchas
 
@@ -33,12 +35,12 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - `FieldLog`'s JSON fields always use `encoding.Encoder`/`Decoder`, whose `__new__` returns the configured `ENCODER`/`DECODER` instead; never pass the configured classes to the fields, or migrations would depend on the settings.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation. Keep it a plain `property` (a new QuerySet per access, like Django's reverse managers): as a `cached_property` it returned stale results after its first evaluation, `refresh_from_db()` did not clear it, and it kept the pk of its first access (`None` before saving). The `cached_property`s of `FieldLog` are fine: a log does not change.
 - Loaded `FieldLog` values are converted (FKs become lazy related instances), which Django refuses to write to a JSON column; `FieldLog.save()` therefore skips `old_value`/`new_value` on existing logs unless they are in `update_fields`.
-- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`, pyupgrade `--py310-plus`, which leaves quoted refs alone). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
+- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`; its `UP` rules leave quoted refs alone, so write those yourself). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
-  It leaves untracked `test_db` and `test_db_other` SQLite files in the repo root (not gitignored); delete them.
+  It leaves `test_db` and `test_db_other` SQLite files in the repo root; they are gitignored.
 
 ## Lint / workflow
 
-- `pre-commit run -a` (ruff `--fix` + ruff-format, pyupgrade, rst checks for `README.rst`). The `no-commit-to-branch` hook blocks commits on `main`.
+- `pre-commit run -a` (ruff `--fix` + ruff-format, rst checks for `README.rst`). There is no pyupgrade hook: ruff's `UP` rules plus `C401`–`C405` and `W605` do its job. The `no-commit-to-branch` hook blocks commits on `main`.
 - Release: bump `version` in `pyproject.toml`, publish a GitHub release tagged `v<version>`; `publish.yml` fails if tag and version differ (PyPI trusted publishing).

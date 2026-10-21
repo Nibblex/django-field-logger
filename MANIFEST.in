@@ -1,0 +1,5 @@
+# Ship the whole test suite in the sdist, so it can be run from it (the
+# default only includes tests/test_*.py). The wheel is not affected.
+graft tests
+prune tests/media
+global-exclude *.py[cod] *.log

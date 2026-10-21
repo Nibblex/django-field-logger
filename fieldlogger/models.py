@@ -171,7 +171,8 @@ class FieldLog(models.Model):
         except LookupError:
             return
 
-        field_path, _, field_name = self.field.rpartition("__")
+        # Not "_": that is gettext_lazy in this module.
+        field_path, _sep, field_name = self.field.rpartition("__")
         model_class = getrmodel(model_class, field_path) or model_class
 
         self.instance_id = model_class._meta.pk.to_python(self.instance_id)

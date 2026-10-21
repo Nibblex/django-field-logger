@@ -1,15 +1,23 @@
+import os
+import subprocess
+import sys
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 from shutil import rmtree
 from uuid import UUID
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.db import connections
 from django.utils import timezone
 
 from fieldlogger import config, signals
 
 NOW = timezone.now()
+
+# The extra_data every scope's callback in tests.settings sets on a log.
+CALLBACKS_EXTRA_DATA = {"global": True, "testapp": True, "testmodel": True}
 
 
 CREATE_FORM = {
@@ -116,9 +124,7 @@ def check_logs(instance, expected_count, callbacks_ran=True, created=False):
     logs = instance.fieldlog_set.filter(created=created)
     assert logs.count() == expected_count
 
-    expected_extra_data = (
-        {"global": True, "testapp": True, "testmodel": True} if callbacks_ran else {}
-    )
+    expected_extra_data = CALLBACKS_EXTRA_DATA if callbacks_ran else {}
 
     for log in logs:
         prev_log = log.previous_log
@@ -134,3 +140,33 @@ def check_logs(instance, expected_count, callbacks_ran=True, created=False):
 def bulk_check_logs(instances, expected_count, callbacks_ran=True, created=False):
     for instance in instances:
         check_logs(instance, expected_count, callbacks_ran, created)
+
+
+def upsert_unique_fields(unique_fields):
+    """``unique_fields`` argument for ``bulk_create(update_conflicts=True)``:
+    MySQL and MariaDB upsert on any unique constraint and reject it."""
+    features = connections["default"].features
+    if features.supports_update_conflicts_with_target:
+        return {"unique_fields": unique_fields}
+    return {}
+
+
+def run_python(args, cwd, settings_module):
+    """Run ``python *args`` in a subprocess with ``settings_module`` as the
+    Django settings and SQLite (created in ``cwd``) as the database, and
+    fail the test unless it exits cleanly."""
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        # Either makes coverage measure the child, which would report its
+        # files with a wider source.
+        if name not in ("COVERAGE_PROCESS_START", "COVERAGE_PROCESS_CONFIG")
+    }
+    env["PYTHONPATH"] = str(Path(__file__).parent.parent)
+    env["DJANGO_SETTINGS_MODULE"] = settings_module
+    env.pop("TEST_DB", None)
+
+    result = subprocess.run(
+        [sys.executable, *args], cwd=cwd, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
