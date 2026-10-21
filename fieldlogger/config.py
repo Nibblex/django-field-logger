@@ -3,10 +3,11 @@
 Reads the ``FIELD_LOGGER_SETTINGS`` dict from the Django settings and builds
 a per-model logging configuration, resolving the options that apply across
 the global, app and model scopes: the switches ``logging_enabled``,
-``fail_silently``, ``log_actor`` and ``log_remote_addr``, and the
-``callbacks`` of every scope.
+``fail_silently``, ``log_actor`` and ``log_remote_addr``, the ``callbacks``
+and ``mask_fields`` of every scope, and the most specific ``mask_callable``.
 """
 
+from collections.abc import Callable
 from typing import Any, TypedDict, cast
 
 from django.apps import apps
@@ -17,6 +18,7 @@ from django.utils.module_loading import import_string
 
 from .app_settings import get_settings
 from .callbacks import Callback
+from .masking import mask_value
 
 # Django >= 5.0 only; None on older versions.
 GENERATED_FIELD = getattr(models, "GeneratedField", None)
@@ -32,6 +34,10 @@ class ModelConfig(TypedDict):
     # Whether the logs record who made the change (see set_actor()).
     log_actor: bool
     log_remote_addr: bool
+    # Names of the fields whose logged values are masked, and the function
+    # that masks them.
+    mask_fields: frozenset[str]
+    mask: Callable[[Any], Any]
 
 
 # Through model -> (model declaring the field, many-to-many field).
@@ -71,6 +77,21 @@ class LoggingConfig:
         return self._settings.get(key.upper(), True) and all(
             config.get(key, True) for config in configs
         )
+
+    def _mask_fields(self, *configs: dict) -> frozenset[str]:
+        """The names in ``mask_fields`` of every scope."""
+        names = set(self._settings.get("MASK_FIELDS", []))
+        for config in configs:
+            names.update(config.get("mask_fields", []))
+        return frozenset(names)
+
+    def _mask(self, *configs: dict) -> Callable[[Any], Any]:
+        """The ``mask_callable`` of the most specific scope that sets one,
+        importing a dotted path; ``mask_value`` if none does."""
+        candidates = [config.get("mask_callable") for config in reversed(configs)]
+        candidates.append(self._settings.get("MASK_CALLABLE"))
+        mask = next((candidate for candidate in candidates if candidate), mask_value)
+        return import_string(mask) if isinstance(mask, str) else mask
 
     def _callbacks(self, *configs: dict) -> list[Callback]:
         """Concatenate the callbacks of all scopes, importing dotted paths."""
@@ -139,6 +160,8 @@ class LoggingConfig:
                     "fail_silently": self._all_scopes("fail_silently", *scopes),
                     "log_actor": self._all_scopes("log_actor", *scopes),
                     "log_remote_addr": self._all_scopes("log_remote_addr", *scopes),
+                    "mask_fields": self._mask_fields(*scopes),
+                    "mask": self._mask(*scopes),
                 }
 
                 for field in logging_m2m_fields:
