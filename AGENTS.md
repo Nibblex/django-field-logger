@@ -10,7 +10,8 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 
 ## Testing
 
-- Settings: `tests.settings` (set in `pyproject.toml`); `pythonpath` includes both `.` and `fieldlogger`.
+- Settings: `tests.settings` (set in `pyproject.toml`); `pythonpath` is the repo root, so this checkout of `fieldlogger` is imported (not tox's installed copy). Always import package modules as `fieldlogger.<module>`.
+- Deprecation warnings raised from `fieldlogger` or `tests` code are errors (`filterwarnings`); third-party ones stay ignored. Fix a new one instead of filtering it.
 - Single test: `python -m pytest -q tests/test_m2m.py -k clear`.
 - Coverage gate is `fail_under = 100` (migrations excluded). Every new branch needs a test.
 - Matrix lives in `[tool.tox]` in `pyproject.toml`. CI installs only tox and runs `tox -f pyXY` for each Python (all Django versions for that Python, e.g. `-f py313`); `-e py313` would run with no Django pin.
@@ -36,7 +37,7 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`; its `UP` rules leave quoted refs alone, so write those yourself). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
-  It leaves untracked `test_db` and `test_db_other` SQLite files in the repo root (not gitignored); delete them.
+  It leaves `test_db` and `test_db_other` SQLite files in the repo root; they are gitignored.
 
 ## Lint / workflow
 

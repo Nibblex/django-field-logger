@@ -69,9 +69,16 @@ include-package-data = true
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 django_find_project = false
-python_files = ["test_*.py", "*_tests.py"]
-pythonpath = [".", "fieldlogger"]
-filterwarnings = ["ignore::DeprecationWarning"]
+# The repo root, so tests.settings and this checkout of fieldlogger (not the
+# copy tox installs) are imported.
+pythonpath = ["."]
+# Deprecations triggered by our own code (library or tests) fail the run;
+# those of third-party code are not ours to fix.
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "error::DeprecationWarning:fieldlogger",
+    "error::DeprecationWarning:tests",
+]
 
 [tool.coverage.run]
 source = ["fieldlogger"]
