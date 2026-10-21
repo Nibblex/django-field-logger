@@ -26,6 +26,7 @@ _CONVERSION_FIELDS = frozenset(
         "old_value",
         "new_value",
         "created",
+        "masked",
     ]
 )
 
@@ -64,6 +65,9 @@ class FieldLog(models.Model):
     )
     extra_data = models.JSONField(encoder=Encoder, decoder=Decoder, default=dict)
     created = models.BooleanField(default=False, editable=False)
+    # The values were masked when logged (see mask_fields): they hold what the
+    # mask returned, so they are not converted back on load.
+    masked = models.BooleanField(default=False, editable=False)
     # Who made the change, from set_actor() or FieldLoggerMiddleware. The
     # user is referenced without a foreign key, like the logged instance:
     # its primary key as text, and its username at the time of the change.
@@ -159,8 +163,8 @@ class FieldLog(models.Model):
 
         ``old_value``/``new_value`` are stored as JSON, so on load they are
         converted back using the original model field (e.g. strings become
-        ``Decimal`` or related instances). Logs whose model or field no
-        longer exists are left as decoded JSON.
+        ``Decimal`` or related instances). Masked logs, and logs whose model
+        or field no longer exists, are left as decoded JSON.
         """
         if self.created:
             # Newly created instances have no previous value.
@@ -176,6 +180,10 @@ class FieldLog(models.Model):
         model_class = getrmodel(model_class, field_path) or model_class
 
         self.instance_id = model_class._meta.pk.to_python(self.instance_id)
+
+        if self.masked:
+            # The values are what the mask returned, not the field's.
+            return
 
         try:
             field = model_class._meta.get_field(field_name)
