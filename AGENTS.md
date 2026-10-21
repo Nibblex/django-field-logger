@@ -33,12 +33,12 @@ Reusable Django app (`fieldlogger/`) that logs per-field changes to a `FieldLog`
 - `FieldLog`'s JSON fields always use `encoding.Encoder`/`Decoder`, whose `__new__` returns the configured `ENCODER`/`DECODER` instead; never pass the configured classes to the fields, or migrations would depend on the settings.
 - `FieldLog` has no FK to logged models; `FieldLoggerMixin.fieldlog_set` emulates the reverse relation. Keep it a plain `property` (a new QuerySet per access, like Django's reverse managers): as a `cached_property` it returned stale results after its first evaluation, `refresh_from_db()` did not clear it, and it kept the pk of its first access (`None` before saving). The `cached_property`s of `FieldLog` are fine: a log does not change.
 - Loaded `FieldLog` values are converted (FKs become lazy related instances), which Django refuses to write to a JSON column; `FieldLog.save()` therefore skips `old_value`/`new_value` on existing logs unless they are in `update_fields`.
-- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`, pyupgrade `--py310-plus`, which leaves quoted refs alone). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
+- Supports Python 3.10+ and Django 4.0–6.1: builtin generics, `collections.abc` and `X | None` (quoted forward refs too: `"FieldLog | None"`), but no 3.11+ syntax (ruff `target-version = "py310"`; its `UP` rules leave quoted refs alone, so write those yourself). Guard version-specific Django APIs (see `GENERATED_FIELD`, the `django.VERSION` check in `FieldLoggerQuerySet.bulk_create`, and `FieldLog.from_db`'s `**kwargs` for 6.1's `fetch_mode`).
 - Migrations check (system checks need Pillow, in `dev`/tox deps, for testapp's `ImageField`; add `--skip-checks` if it's missing):
   `PYTHONPATH=. django-admin makemigrations fieldlogger --check --dry-run --settings=tests.settings`
   It leaves untracked `test_db` and `test_db_other` SQLite files in the repo root (not gitignored); delete them.
 
 ## Lint / workflow
 
-- `pre-commit run -a` (ruff `--fix` + ruff-format, pyupgrade, rst checks for `README.rst`). The `no-commit-to-branch` hook blocks commits on `main`.
+- `pre-commit run -a` (ruff `--fix` + ruff-format, rst checks for `README.rst`). There is no pyupgrade hook: ruff's `UP` rules plus `C401`–`C405` and `W605` do its job. The `no-commit-to-branch` hook blocks commits on `main`.
 - Release: bump `version` in `pyproject.toml`, publish a GitHub release tagged `v<version>`; `publish.yml` fails if tag and version differ (PyPI trusted publishing).

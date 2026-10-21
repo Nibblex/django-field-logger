@@ -142,4 +142,8 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+select = [
+    "E4", "E7", "E9", "F", "I", "B", "UP",
+    # With UP, what the pyupgrade hook used to fix.
+    "C401", "C402", "C403", "C404", "C405", "W605",
+]
