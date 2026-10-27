@@ -26,6 +26,7 @@ _CONVERSION_FIELDS = frozenset(
         "old_value",
         "new_value",
         "created",
+        "deleted",
         "masked",
     ]
 )
@@ -65,6 +66,9 @@ class FieldLog(models.Model):
     )
     extra_data = models.JSONField(encoder=Encoder, decoder=Decoder, default=dict)
     created = models.BooleanField(default=False, editable=False)
+    # The instance was deleted (see log_deletions): old_value holds the
+    # field's last value, and new_value is None.
+    deleted = models.BooleanField(default=False, editable=False)
     # The values were masked when logged (see mask_fields): they hold what the
     # mask returned, so they are not converted back on load.
     masked = models.BooleanField(default=False, editable=False)
@@ -78,6 +82,11 @@ class FieldLog(models.Model):
         max_length=255, blank=True, null=True, editable=False
     )
     remote_addr = models.GenericIPAddressField(blank=True, null=True, editable=False)
+    # Groups the logs of a request or a set_correlation_id() block and,
+    # outside both, those of a single operation.
+    correlation_id = models.CharField(
+        max_length=255, blank=True, null=True, editable=False, db_index=True
+    )
 
     class Meta:
         indexes = [
@@ -197,7 +206,10 @@ class FieldLog(models.Model):
         if not self.created:
             self.old_value = self.from_db_field(field, self.old_value)
 
-        self.new_value = self.from_db_field(field, self.new_value)
+        if not self.deleted:
+            # A deleted instance has no new value, which some fields
+            # cannot convert (a BooleanField without null rejects None).
+            self.new_value = self.from_db_field(field, self.new_value)
 
     @cached_property
     def model(self) -> type[models.Model]:
@@ -206,7 +218,8 @@ class FieldLog(models.Model):
 
     @cached_property
     def instance(self) -> models.Model:
-        """The logged instance, fetched from the database."""
+        """The logged instance, fetched from the database; raises
+        ``DoesNotExist`` if it was deleted."""
         return self.model._base_manager.get(pk=self.instance_id)
 
     @cached_property

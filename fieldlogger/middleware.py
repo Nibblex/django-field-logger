@@ -1,22 +1,26 @@
-"""Middleware that records who makes the changes logged during a request."""
+"""Middleware that records who makes the changes logged during a request,
+and groups their logs."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from asgiref.sync import iscoroutinefunction, markcoroutinefunction
 from django.http import HttpRequest
 
-from .context import set_actor
+from .context import set_actor, set_correlation_id
 
 
 class FieldLoggerMiddleware:
     """Records the request's user and IP address in the logs created while
-    handling it, through ``set_actor()``.
+    handling it, through ``set_actor()``, and gives them a correlation ID of
+    the request, through ``set_correlation_id()``.
 
     Place it after ``AuthenticationMiddleware``. ``request.user`` is only
-    evaluated if a log is created. Override ``get_user()`` or
-    ``get_remote_addr()`` to change where they come from, e.g. to read the
-    client's address from a header set by a trusted proxy.
+    evaluated if a log is created. Override ``get_user()``,
+    ``get_remote_addr()`` or ``get_correlation_id()`` to change where they
+    come from, e.g. to read the client's address from a header set by a
+    trusted proxy.
     """
 
     sync_capable = True
@@ -33,12 +37,20 @@ class FieldLoggerMiddleware:
     def __call__(self, request: HttpRequest) -> Any:
         if self.async_mode:
             return self.__acall__(request)
-        with set_actor(self.get_user(request), self.get_remote_addr(request)):
+        with self._logging_context(request):
             return self.get_response(request)
 
     async def __acall__(self, request: HttpRequest) -> Any:
-        with set_actor(self.get_user(request), self.get_remote_addr(request)):
+        with self._logging_context(request):
             return await self.get_response(request)
+
+    @contextmanager
+    def _logging_context(self, request: HttpRequest) -> Iterator[None]:
+        with (
+            set_actor(self.get_user(request), self.get_remote_addr(request)),
+            set_correlation_id(self.get_correlation_id(request)),
+        ):
+            yield
 
     def get_user(self, request: HttpRequest) -> Any:
         """The user to record: ``request.user``, still unevaluated."""
@@ -52,3 +64,13 @@ class FieldLoggerMiddleware:
         with any value.
         """
         return request.META.get("REMOTE_ADDR")
+
+    def get_correlation_id(self, request: HttpRequest) -> Any:
+        """The correlation ID of the request's logs: None, so that each
+        request gets a new random one.
+
+        Return the ID of the request from elsewhere to match it, e.g. a
+        header set by your proxy or the ID of a request-ID library. An
+        empty value also gets a new random ID.
+        """
+        return None

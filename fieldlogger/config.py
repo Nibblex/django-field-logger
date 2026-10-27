@@ -4,7 +4,8 @@ Reads the ``FIELD_LOGGER_SETTINGS`` dict from the Django settings and builds
 a per-model logging configuration, resolving the options that apply across
 the global, app and model scopes: the switches ``logging_enabled``,
 ``fail_silently``, ``log_actor`` and ``log_remote_addr``, the ``callbacks``
-and ``mask_fields`` of every scope, and the most specific ``mask_callable``.
+and ``mask_fields`` of every scope, and the most specific ``mask_callable``
+and ``log_deletions``.
 """
 
 from collections.abc import Callable
@@ -38,6 +39,8 @@ class ModelConfig(TypedDict):
     # that masks them.
     mask_fields: frozenset[str]
     mask: Callable[[Any], Any]
+    # Whether deletions are logged; off unless a scope turns it on.
+    log_deletions: bool
 
 
 # Through model -> (model declaring the field, many-to-many field).
@@ -77,6 +80,14 @@ class LoggingConfig:
         return self._settings.get(key.upper(), True) and all(
             config.get(key, True) for config in configs
         )
+
+    def _most_specific(self, key: str, *configs: dict, default: Any = None) -> Any:
+        """The value of a setting in the most specific scope that sets it,
+        even to a false value; ``default`` if none does."""
+        for config in reversed(configs):
+            if key in config:
+                return config[key]
+        return self._settings.get(key.upper(), default)
 
     def _mask_fields(self, *configs: dict) -> frozenset[str]:
         """The names in ``mask_fields`` of every scope."""
@@ -162,6 +173,9 @@ class LoggingConfig:
                     "log_remote_addr": self._all_scopes("log_remote_addr", *scopes),
                     "mask_fields": self._mask_fields(*scopes),
                     "mask": self._mask(*scopes),
+                    "log_deletions": bool(
+                        self._most_specific("log_deletions", *scopes, default=False)
+                    ),
                 }
 
                 for field in logging_m2m_fields:
