@@ -41,6 +41,7 @@ How to set up?
         'FAIL_SILENTLY': True, # (default: True)
         'LOG_ACTOR': True, # (default: True)
         'LOG_REMOTE_ADDR': True, # (default: True)
+        'LOG_DELETIONS': False, # (default: False)
         'MASK_FIELDS': ['password'], # (default: [])
         'MASK_CALLABLE': 'yourapp.masking.your_mask', # (default: None, values logged as '********')
         'LOGGING_APPS': {
@@ -49,6 +50,7 @@ How to set up?
                 'fail_silently': True, # (default: True)
                 'log_actor': True, # (default: True)
                 'log_remote_addr': True, # (default: True)
+                'log_deletions': False, # (default: LOG_DELETIONS)
                 'mask_fields': ['field5'], # (default: [])
                 'mask_callable': 'yourapp.masking.your_mask', # (default: None)
                 'models': {
@@ -57,6 +59,7 @@ How to set up?
                         'fail_silently': True, # (default: True)
                         'log_actor': True, # (default: True)
                         'log_remote_addr': True, # (default: True)
+                        'log_deletions': True, # (default: the app's log_deletions)
                         'fields': ['field1', 'field2'], # or '__all__' (default: [], no field is logged)
                         'exclude_fields': ['field3', 'field4'], # (default: [])
                         'mask_fields': ['field6'], # (default: [])
@@ -101,6 +104,10 @@ How to set up?
    lowercase (``logging_enabled``, ``fail_silently``, ``log_actor``,
    ``log_remote_addr``). Each one is on unless it is ``False`` in the
    global settings, the app or the model.
+-  ``LOG_DELETIONS`` is optional. Set it to ``True`` to log the deletions
+   of the logged models (see `Logging deletions`_). Per app and per model
+   it is ``log_deletions``, taken from the most specific scope that sets
+   it, so an app or a model can turn it on or off for itself.
 -  ``MASK_FIELDS`` and ``MASK_CALLABLE`` are optional: fields whose values
    are logged masked, and the function that masks them (see `Masking
    sensitive fields`_). Per app and per model they are ``mask_fields``,
@@ -155,12 +162,16 @@ How it works?
 -  On startup, reads ``FIELD_LOGGER_SETTINGS`` and resolves, for each
    configured model, the fields to log and the options of its scopes.
 -  Connects to the ``pre_save`` and ``post_save`` signals of each logged
-   model, and to the ``m2m_changed`` signal of each logged many-to-many
-   field. Bulk operations are logged by ``FieldLoggerManager`` (see
-   `The FieldLoggerManager`_).
+   model, to the ``m2m_changed`` signal of each logged many-to-many
+   field, and to the ``pre_delete`` and ``post_delete`` signals of the
+   models that log deletions. Bulk operations are logged by
+   ``FieldLoggerManager`` (see `The FieldLoggerManager`_).
 -  Creates one ``FieldLog`` record per changed field: when an instance
-   is created (``created=True``), when it is saved with changes, and
-   when its many-to-many relations change.
+   is created (``created=True``), when it is saved with changes, when
+   its many-to-many relations change, and, if enabled, when it is
+   deleted (``deleted=True``).
+-  Gives the logs created together a common ``correlation_id`` (see
+   `Grouping the logs of a request`_).
 -  The logged values are read back from the database after saving, so
    they are the stored ones: expressions such as ``F('count') + 1`` are
    logged as their result, and values the database rounds or converts
@@ -270,9 +281,11 @@ instance. An example record:
         'new_value': 'Jane Doe',
         'extra_data': {}, # this is a JSONField, you can store any extra data here using callbacks or by overriding it directly
         'created': False, # this is a boolean field, if it is True, it means that instance is a newly created instance
+        'deleted': False, # True if the instance was deleted, see "Logging deletions"
         'actor_id': '7', # who made the change, see "Recording who made the change" (default: None)
         'actor_username': 'admin', # (default: None)
         'remote_addr': '127.0.0.1', # (default: None)
+        'correlation_id': '1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b', # see "Grouping the logs of a request"
         'masked': False, # True if the values were masked, see "Masking sensitive fields"
     }
 
@@ -280,7 +293,8 @@ Additionally, ``FieldLog`` model provides the following properties:
 
 -  ``model``: returns the model class of the instance that is
    being logged.
--  ``instance``: returns the instance that is being logged.
+-  ``instance``: returns the instance that is being logged, or raises
+   its model's ``DoesNotExist`` if it was deleted.
 -  ``previous_log``: returns the previous log of the same field of the
    same instance, if any.
 -  ``actor``: returns the user who made the change, if known and not
@@ -399,6 +413,65 @@ driver affected by the change gets its own log:
 -  Changes made directly on an explicit ``through`` model (e.g.
    ``Membership.objects.create(...)``) do not fire ``m2m_changed``, so
    they are not logged; this mirrors Django's own behavior.
+
+Logging deletions
+~~~~~~~~~~~~~~~~~
+
+Deletions are not logged by default. To log them, set ``log_deletions``
+to ``True`` in the configuration of a model or an app, or
+``LOG_DELETIONS`` globally:
+
+.. code:: python
+
+    FIELD_LOGGER_SETTINGS = {
+        'LOGGING_APPS': {
+            'drivers': {
+                'models': {
+                    'Driver': {
+                        'fields': '__all__',
+                        'log_deletions': True,
+                    },
+                },
+            },
+        },
+    }
+
+    driver_id = driver.pk
+    driver.delete()
+
+    log = FieldLog.objects.get(
+        app_label='drivers', model_name='driver', instance_id=driver_id,
+        field='driver_name', deleted=True,
+    )
+    print(log.old_value, log.new_value)  # prints: Jane Doe None
+
+A deletion is logged like a creation, the other way around: one log per
+logged field that had a value, from its last value to ``None``, with
+``deleted=True``. The logs thus keep the final state of the instance,
+even if earlier changes were not logged.
+
+-  The values are read from the database just before the deletion, as
+   for a save: ``instance.delete()`` costs one extra query. The objects
+   Django loads to delete them, in ``QuerySet.delete()`` or a cascade,
+   are used as loaded (on Django 4.0, which does not tell them apart,
+   they are read too).
+-  ``QuerySet.delete()`` and cascades are logged, since Django sends the
+   deletion signals for every object. To send them, Django loads every
+   object of a model that logs deletions before deleting it, instead of
+   deleting the rows with a single query: leave it off for models whose
+   large bulk deletions you do not need to log.
+-  Many-to-many fields are not logged on deletion: Django deletes the
+   rows of the relation without the ``m2m_changed`` signal. Their last
+   logged state is in the latest log of the field.
+-  The logs record who deleted the instance and the correlation ID, the
+   fields in ``mask_fields`` are masked, and inside
+   ``disable_logging()`` nothing is logged.
+-  Callbacks run for the deleted instances that got a log, which still
+   have their primary key; ``log.deleted`` tells deletions apart.
+   ``log.instance`` raises ``DoesNotExist`` for them.
+-  The most specific scope that sets ``log_deletions`` applies: with
+   ``LOG_DELETIONS`` on, a model can turn it off with
+   ``'log_deletions': False``.
 
 Masking sensitive fields
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -542,6 +615,49 @@ not stored.
 ``django.contrib.auth`` is not required: without it, the middleware
 records only the IP address.
 
+The middleware also gives the logs of each request a common correlation
+ID (see `Grouping the logs of a request`_).
+
+Grouping the logs of a request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each log has a ``correlation_id`` shared with the logs created along
+with it:
+
+-  In a request handled by ``FieldLoggerMiddleware``, all the logs of the
+   request share a new random ID (a UUID).
+-  Inside a ``set_correlation_id()`` block, the logs get the ID of the
+   block: the one you pass, such as the ID of a Celery task, or a new
+   random one.
+-  Elsewhere, the logs of each operation share an ID: a ``save()``, a
+   bulk operation, a many-to-many change, or the deletion of an object.
+
+.. code:: python
+
+    from fieldlogger import set_correlation_id
+
+    with set_correlation_id(task_id) as correlation_id:
+        import_drivers()
+
+    logs = FieldLog.objects.filter(correlation_id=correlation_id)
+
+The column is indexed, and IDs longer than 255 characters are
+truncated. ``set_correlation_id()`` can also decorate a function, with a
+new ID on every call, and blocks can be nested; the innermost one
+applies.
+
+To use the ID that identifies the request elsewhere, such as one set by
+your proxy or by a request-ID library, override ``get_correlation_id()``
+in the middleware; when it returns no value, a new ID is generated. As
+with the IP address, only read a header your proxy sets, since clients
+can send any value:
+
+.. code:: python
+
+    class RequestIdFieldLoggerMiddleware(FieldLoggerMiddleware):
+        def get_correlation_id(self, request):
+            return request.headers.get('X-Request-ID')
+
 Disabling logging temporarily
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -557,8 +673,8 @@ example while importing data:
             driver.save()  # not logged
         Driver.objects.bulk_create(new_drivers)  # not logged
 
-Inside the block, ``save()``, many-to-many changes and the bulk
-operations of ``FieldLoggerManager`` and its querysets (including
+Inside the block, ``save()``, many-to-many changes, deletions and the
+bulk operations of ``FieldLoggerManager`` and its querysets (including
 ``abulk_create`` and ``abulk_update``) create no logs and run no
 callbacks, and the queries that read the previous values are skipped.
 Changes made inside the block are not logged later either: the next log

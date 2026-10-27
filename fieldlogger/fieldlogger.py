@@ -11,7 +11,7 @@ from django.db.models.fields.files import FieldFile
 
 from .callbacks import Logs, invoke_callbacks
 from .config import ModelConfig, get_config, through_model
-from .context import current_actor
+from .context import current_actor, current_correlation_id, new_correlation_id
 from .db import batches, db_supports_returning_pks
 from .models import FieldLog
 
@@ -19,6 +19,7 @@ from .models import FieldLog
 # the "pre" and "post" signals (or around a bulk update).
 PRE_INSTANCE_ATTR = "_fieldlogger_pre_instance"
 PRE_M2M_ATTR = "_fieldlogger_pre_m2m"
+PRE_DELETE_ATTR = "_fieldlogger_pre_delete"
 
 
 def _ip_address(value: str | None) -> str | None:
@@ -60,10 +61,17 @@ def _actor_fields(logging_config: ModelConfig) -> dict[str, Any]:
     return fields
 
 
+def _correlation_id() -> str:
+    """The ID of the active ``set_correlation_id()``, or a new one, which
+    groups the logs of a single operation outside one."""
+    max_length = cast(Field, FieldLog._meta.get_field("correlation_id")).max_length
+    return (current_correlation_id() or new_correlation_id())[:max_length]
+
+
 def _save_logs(field_logs: Sequence[FieldLog], logging_config: ModelConfig) -> None:
-    """Insert ``field_logs``, the logs of a model configured with
-    ``logging_config``, recording who made the change and setting their
-    primary keys.
+    """Insert ``field_logs``, the logs of an operation on a model configured
+    with ``logging_config``, recording who made the change and their
+    correlation ID, and setting their primary keys.
 
     The actor is resolved once per operation, and only when there are
     logs. Callbacks receive the logs and may save them or follow
@@ -71,9 +79,12 @@ def _save_logs(field_logs: Sequence[FieldLog], logging_config: ModelConfig) -> N
     not set them, each log is inserted on its own so the database assigns
     it, without guessing keys or bypassing the table's sequence.
     """
-    actor_fields = _actor_fields(logging_config)
+    shared_fields = {
+        **_actor_fields(logging_config),
+        "correlation_id": _correlation_id(),
+    }
     for field_log in field_logs:
-        for name, value in actor_fields.items():
+        for name, value in shared_fields.items():
             setattr(field_log, name, value)
 
     using = router.db_for_write(FieldLog)
@@ -91,6 +102,36 @@ def _mask(value: Any, logging_config: ModelConfig) -> Any:
     for it. None (no value) is logged as None, so that setting or clearing
     the field stays visible."""
     return None if value is None else logging_config["mask"](value)
+
+
+def _field_log(
+    model_class: type[Model],
+    instance_pk: Any,
+    field: Field,
+    old_value: Any,
+    new_value: Any,
+    logging_config: ModelConfig,
+    **kwargs: Any,
+) -> FieldLog:
+    """A new ``FieldLog`` of a change to ``field`` of an instance of
+    ``model_class``, with the values masked if the field is in
+    ``mask_fields``. ``kwargs`` sets other fields of the log."""
+    masked = field.name in logging_config["mask_fields"]
+    if masked:
+        old_value = _mask(old_value, logging_config)
+        new_value = _mask(new_value, logging_config)
+
+    return FieldLog(
+        app_label=model_class._meta.app_label,
+        # Always set on concrete models; Optional only in the stubs.
+        model_name=cast(str, model_class._meta.model_name),
+        instance_id=instance_pk,
+        field=field.name,
+        old_value=old_value,
+        new_value=new_value,
+        masked=masked,
+        **kwargs,
+    )
 
 
 def _stored_value(row: Model, field: Field, empty_is_null: bool) -> Any:
@@ -166,21 +207,14 @@ def _log_fields(
             if new_value == old_value:
                 continue
 
-            masked = field.name in logging_config["mask_fields"]
-            if masked:
-                old_value = _mask(old_value, logging_config)
-                new_value = _mask(new_value, logging_config)
-
-            field_log = FieldLog(
-                app_label=instance._meta.app_label,
-                # Always set on concrete models; Optional only in the stubs.
-                model_name=cast(str, instance._meta.model_name),
-                instance_id=instance.pk,
-                field=field.name,
-                old_value=old_value,
-                new_value=new_value,
+            field_log = _field_log(
+                type(instance),
+                instance.pk,
+                field,
+                old_value,
+                new_value,
+                logging_config,
                 created=pre_instance is None,
-                masked=masked,
             )
 
             field_logs_to_create.append(field_log)
@@ -281,7 +315,6 @@ def log_m2m_fields(
 
     new_state = m2m_pks(field, old_state, using)
 
-    masked = field.name in logging_config["mask_fields"]
     logs: Logs = {}
     field_logs_to_create = []
     for instance_pk, old_pks in old_state.items():
@@ -289,20 +322,13 @@ def log_m2m_fields(
         if old_pks == new_pks:
             continue
 
-        old_value: Any = sorted(old_pks)
-        new_value: Any = sorted(new_pks)
-        if masked:
-            old_value = _mask(old_value, logging_config)
-            new_value = _mask(new_value, logging_config)
-
-        field_log = FieldLog(
-            app_label=model_class._meta.app_label,
-            model_name=cast(str, model_class._meta.model_name),
-            instance_id=instance_pk,
-            field=field.name,
-            old_value=old_value,
-            new_value=new_value,
-            masked=masked,
+        field_log = _field_log(
+            model_class,
+            instance_pk,
+            field,
+            sorted(old_pks),
+            sorted(new_pks),
+            logging_config,
         )
         field_logs_to_create.append(field_log)
         logs.setdefault(instance_pk, {})[field.name] = field_log
@@ -326,5 +352,69 @@ def log_m2m_fields(
             frozenset({field}),
             logging_config["fail_silently"],
         )
+
+    return logs
+
+
+def log_deletions(
+    sender: type[Model], instances: Iterable[Model], using: str | None = None
+) -> Logs:
+    """Log the deletion of ``instances`` of the ``sender`` model: one log
+    per logged field that had a value, from that value to None.
+
+    The values are read from the ``PRE_DELETE_ATTR`` attribute of each
+    instance, the row as stored before the deletion (``using`` is the
+    database it was deleted from); instances without it are not logged.
+    Callbacks run for the instances that got a log, which ``log.deleted``
+    tells apart. Returns the created logs like ``log_fields``; an empty
+    dict if ``sender`` does not log deletions.
+    """
+    logging_config = get_config().get(sender)
+    if not logging_config or not logging_config["log_deletions"]:
+        return {}
+
+    instances = list(instances)
+    using = using or router.db_for_write(sender)
+    empty_is_null = connections[using].features.interprets_empty_strings_as_nulls
+
+    logs: Logs = {}
+    field_logs_to_create = []
+    for instance in instances:
+        row = getattr(instance, PRE_DELETE_ATTR, None)
+        if row is None:
+            continue
+
+        for field in logging_config["logging_fields"]:
+            old_value = _stored_value(row, field, empty_is_null)
+            if old_value is None:
+                continue
+
+            field_log = _field_log(
+                sender,
+                instance.pk,
+                field,
+                old_value,
+                None,
+                logging_config,
+                deleted=True,
+            )
+            field_logs_to_create.append(field_log)
+            logs.setdefault(instance.pk, {})[field.name] = field_log
+
+    if not field_logs_to_create:
+        return logs
+
+    _save_logs(field_logs_to_create, logging_config)
+
+    for field_log in field_logs_to_create:
+        field_log._convert_db_values()
+
+    invoke_callbacks(
+        [instance for instance in instances if instance.pk in logs],
+        logging_config["callbacks"],
+        logs,
+        logging_config["logging_fields"],
+        logging_config["fail_silently"],
+    )
 
     return logs
